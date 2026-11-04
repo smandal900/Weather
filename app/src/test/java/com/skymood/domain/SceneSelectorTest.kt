@@ -2,31 +2,62 @@ package com.skymood.domain
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SceneSelectorTest {
 
     private val loc = SavedLocation("Here", 0.0, 0.0)
-    private fun weather(code: Int, isDay: Boolean = true) =
-        WeatherState(code, isDay, 10.0, 20.0, 50, 0.0, loc, 0L)
+    private fun weather(code: Int, isDay: Boolean = true, wind: Double = 20.0) =
+        WeatherState(code, isDay, 10.0, wind, 50, 0.0, loc, 0L)
 
     @Test
-    fun `no cache falls back to clear by day and night by night`() {
-        assertEquals(SceneType.CLEAR, SceneSelector.select(null, Settings(), hour = 12).type)
-        assertEquals(SceneType.NIGHT, SceneSelector.select(null, Settings(), hour = 23).type)
-        assertNull(SceneSelector.select(null, Settings(), hour = 12).temperatureC)
+    fun `no cache falls back to a clear sky by the clock`() {
+        val day = SceneSelector.select(null, Settings(), hour = 12)
+        val night = SceneSelector.select(null, Settings(), hour = 23)
+        assertEquals(SceneType.CLEAR, day.type)
+        assertEquals(TimeOfDay.DAY, day.timeOfDay)
+        assertEquals(SceneType.CLEAR, night.type)
+        assertEquals(TimeOfDay.NIGHT, night.timeOfDay)
+        assertNull(day.temperatureC)
     }
 
     @Test
-    fun `cached weather picks the scene`() {
-        assertEquals(SceneType.RAIN, SceneSelector.select(weather(63), Settings(), 12).type)
-        assertEquals(SceneType.NIGHT, SceneSelector.select(weather(0, isDay = false), Settings(), 12).type)
+    fun `cached weather picks the scene and is_day picks night`() {
+        assertEquals(SceneType.HEAVY_RAIN, SceneSelector.select(weather(63), Settings(), 12).type)
+        assertEquals(TimeOfDay.NIGHT, SceneSelector.select(weather(0, isDay = false), Settings(), 12).timeOfDay)
     }
 
     @Test
-    fun `preview override wins`() {
-        val spec = SceneSelector.select(weather(0), Settings(previewOverride = SceneType.STORM), 12)
+    fun `weather, time and landscape overrides win`() {
+        val spec = SceneSelector.select(
+            weather(0),
+            Settings(
+                previewOverride = SceneType.STORM,
+                timeOverride = TimeOfDay.DUSK,
+                landscape = LandscapeType.WATERFALL,
+            ),
+            12,
+        )
         assertEquals(SceneType.STORM, spec.type)
+        assertEquals(TimeOfDay.DUSK, spec.timeOfDay)
+        assertEquals(LandscapeType.WATERFALL, spec.landscape)
+    }
+
+    @Test
+    fun `forced windy scene gets strong wind`() {
+        val spec = SceneSelector.select(weather(0, wind = 5.0), Settings(previewOverride = SceneType.WINDY), 12)
+        assertTrue(spec.windKmh >= 50f)
+    }
+
+    @Test
+    fun `every combination of time, landscape and weather is reachable`() {
+        val seen = mutableSetOf<Triple<TimeOfDay, LandscapeType, SceneType>>()
+        for (t in TimeOfDay.entries) for (l in LandscapeType.entries) for (s in SceneType.entries) {
+            val spec = SceneSelector.select(null, Settings(previewOverride = s, timeOverride = t, landscape = l), 12)
+            seen += Triple(spec.timeOfDay, spec.landscape, spec.type)
+        }
+        assertEquals(480, seen.size)
     }
 
     @Test

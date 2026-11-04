@@ -16,8 +16,10 @@ import kotlin.random.Random
  * @param drawSky false when another scene (the storm) draws its own background.
  */
 class RainScene(
-    private val skyType: SceneType = SceneType.RAIN,
+    private val skyType: SceneType = SceneType.HEAVY_RAIN,
     private val drawSky: Boolean = true,
+    /** Drizzle: fewer, shorter, thinner and slower drops. */
+    private val drizzle: Boolean = false,
 ) : BaseScene() {
 
     private val drops = ParticlePool(MAX_DROPS)
@@ -52,12 +54,16 @@ class RainScene(
         clouds?.setParallax(offset)
     }
 
-    fun targetDrops(): Int = (150 + 450 * intensity).toInt().coerceIn(0, MAX_DROPS)
+    fun targetDrops(): Int {
+        val n = if (drizzle) 120 + 180 * intensity else 300 + 400 * intensity
+        return n.toInt().coerceIn(0, MAX_DROPS)
+    }
 
     override fun onResize() {
         val density = width / 1080f
-        nearPaint.strokeWidth = 2.2f * density.coerceAtLeast(0.6f)
-        farPaint.strokeWidth = 1.3f * density.coerceAtLeast(0.6f)
+        val weight = if (drizzle) 0.6f else 1f
+        nearPaint.strokeWidth = 2.2f * weight * density.coerceAtLeast(0.6f)
+        farPaint.strokeWidth = 1.3f * weight * density.coerceAtLeast(0.6f)
         drops.clear()
         splashes.clear()
         fill()
@@ -83,10 +89,11 @@ class RainScene(
     private fun spawnDrop(p: Particle, randomY: Boolean) {
         p.layer = if (Random.nextFloat() < 0.4f) 1 else 0 // 1 = far
         val depth = if (p.layer == 1) 0.6f else 1f
-        val speed = height * (1.3f + Random.nextFloat() * 0.9f) * depth
+        val pace = if (drizzle) 0.6f else 1f
+        val speed = height * (1.3f + Random.nextFloat() * 0.9f) * depth * pace
         p.vy = speed
         p.vx = speed * tilt
-        p.length = height * (0.025f + Random.nextFloat() * 0.035f) * depth
+        p.length = height * (0.025f + Random.nextFloat() * 0.035f) * depth * (if (drizzle) 0.45f else 1f)
         // Start further left when the wind blows right, so the screen stays covered.
         p.x = Random.nextFloat() * (width + height * tilt) - height * tilt
         p.y = if (randomY) Random.nextFloat() * height else -p.length - Random.nextFloat() * height * 0.2f
@@ -118,7 +125,7 @@ class RainScene(
             p.x += p.vx * dt
             p.y += p.vy * dt
             if (p.y >= p.maxLife) {
-                if (p.layer == 0 && Random.nextFloat() < 0.35f) spawnSplash(p.x, p.maxLife)
+                if (p.layer == 0 && Random.nextFloat() < (if (drizzle) 0.12f else 0.35f)) spawnSplash(p.x, p.maxLife)
                 if (drops.activeCount > target) drops.release(i) else spawnDrop(p, randomY = false)
             }
         }
@@ -138,12 +145,15 @@ class RainScene(
         }
     }
 
-    override fun draw(canvas: Canvas) {
+    override fun drawBackground(canvas: Canvas) {
         if (drawSky) {
             sky.draw(canvas, width, height, skyType, timeOfDay)
             canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), hazePaint)
         }
-        clouds?.draw(canvas)
+        clouds?.drawBackground(canvas)
+    }
+
+    override fun drawForeground(canvas: Canvas) {
         var near = 0
         var far = 0
         val shift = parallaxPx

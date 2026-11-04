@@ -58,8 +58,12 @@ class FogScene : BaseScene() {
         }
     }
 
-    override fun draw(canvas: Canvas) {
+    override fun drawBackground(canvas: Canvas) {
         sky.draw(canvas, width, height, SceneType.FOG, timeOfDay)
+    }
+
+    /** The haze and fog banks sit in front of the landscape, so it fades into the mist. */
+    override fun drawForeground(canvas: Canvas) {
         hazePaint.alpha = (60 + 80 * intensity.coerceAtMost(1f)).toInt()
         canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), hazePaint)
 

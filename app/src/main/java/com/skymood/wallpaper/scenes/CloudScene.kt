@@ -28,9 +28,12 @@ import kotlin.random.Random
 class CloudScene(
     private val style: Style = Style.FAIR,
     private val drawSky: Boolean = true,
+    /** Keeps the cloud cover inside a range, e.g. 25..55 for Partly cloudy, 85..100 for Overcast. */
+    private val coverRange: IntRange = 0..100,
+    private val skyOverride: SceneType? = null,
 ) : BaseScene() {
 
-    enum class Style { FAIR, RAIN, STORM, SNOW }
+    enum class Style { FAIR, OVERCAST, RAIN, STORM, SNOW }
 
     private val clouds = ParticlePool(MAX_CLOUDS)
     private val bodyPaints = Array(LAYERS) { Paint(Paint.ANTI_ALIAS_FLAG) }
@@ -53,10 +56,11 @@ class CloudScene(
     private val templateCount = IntArray(TEMPLATES)
 
     private val skyType: SceneType
-        get() = when (style) {
-            Style.FAIR -> SceneType.CLOUD
+        get() = skyOverride ?: when (style) {
+            Style.FAIR -> SceneType.PARTLY_CLOUDY
+            Style.OVERCAST -> SceneType.OVERCAST
             Style.SNOW -> SceneType.SNOW
-            Style.RAIN -> SceneType.RAIN
+            Style.RAIN -> SceneType.HEAVY_RAIN
             Style.STORM -> SceneType.STORM
         }
 
@@ -102,6 +106,10 @@ class CloudScene(
         if (width > 1) sun.setup(min(width, height) * 0.075f, warm = timeOfDay != TimeOfDay.DAY)
     }
 
+    override fun setEnvironment(windKmh: Float, cloudCover: Int, timeOfDay: TimeOfDay) {
+        super.setEnvironment(windKmh, cloudCover.coerceIn(coverRange.first, coverRange.last), timeOfDay)
+    }
+
     private fun applyColors() {
         val night = timeOfDay == TimeOfDay.NIGHT
         val warm = timeOfDay == TimeOfDay.DAWN || timeOfDay == TimeOfDay.DUSK
@@ -113,6 +121,8 @@ class CloudScene(
                 warm -> { light = 0xFFFFE3D2.toInt(); shade = 0xFFA88596.toInt() }
                 else -> { light = 0xFFFFFFFF.toInt(); shade = 0xFFC3CEDB.toInt() }
             }
+            Style.OVERCAST -> if (night) { light = 0xFF3C4350.toInt(); shade = 0xFF1C2028.toInt() }
+            else { light = 0xFFC7CCD4.toInt(); shade = 0xFF838B97.toInt() }
             Style.SNOW -> if (night) { light = 0xFF5A6378.toInt(); shade = 0xFF2B303C.toInt() }
             else { light = 0xFFEEF1F5.toInt(); shade = 0xFFA6AFBC.toInt() }
             Style.RAIN -> if (night) { light = 0xFF3A414E.toInt(); shade = 0xFF181B22.toInt() }
@@ -162,11 +172,11 @@ class CloudScene(
         p.layer = pickLayer()
         p.variant = Random.nextInt(TEMPLATES)
         val depth = 1f - p.layer * 0.28f
-        val big = if (style == Style.FAIR) 1f else 1.3f
+        val big = when (style) { Style.FAIR -> 1f; Style.OVERCAST -> 1.5f; else -> 1.3f }
         p.size = unit * depth * big * (0.9f + Random.nextFloat() * 0.7f)
         // Near clouds sit lower on screen, far ones higher, which reads as depth.
-        val band = if (style == Style.FAIR) 0.5f else 0.24f
-        val top = if (style == Style.FAIR) 0.02f else -0.04f
+        val band = when (style) { Style.FAIR -> 0.5f; Style.OVERCAST -> 0.42f; else -> 0.24f }
+        val top = when (style) { Style.FAIR -> 0.02f; Style.OVERCAST -> -0.05f; else -> -0.04f }
         p.y = height * (top + (1f - p.layer / (LAYERS - 1f)) * band * 0.6f + Random.nextFloat() * band * 0.4f)
         p.x = if (randomX) Random.nextFloat() * (width + 420f * p.size) - 420f * p.size else -430f * p.size
         p.vx = depth * (0.7f + Random.nextFloat() * 0.3f)
@@ -206,10 +216,10 @@ class CloudScene(
         }
     }
 
-    override fun draw(canvas: Canvas) {
+    override fun drawBackground(canvas: Canvas) {
         if (drawSky) {
             sky.draw(canvas, width, height, skyType, timeOfDay)
-            if (style == Style.FAIR) {
+            if (style == Style.FAIR || style == Style.OVERCAST) {
                 // The more cloud cover, the greyer and flatter the sky.
                 veilPaint.alpha = (cloudCover / 100f * 0.5f * 255).toInt().coerceIn(0, 140)
                 canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), veilPaint)

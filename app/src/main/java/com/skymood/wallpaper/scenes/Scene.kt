@@ -11,7 +11,15 @@ import com.skymood.domain.TimeOfDay
  */
 interface Scene {
     fun update(dtMs: Long)
-    fun draw(canvas: Canvas)
+    /** Draws the whole scene: [drawBackground] then [drawForeground]. */
+    fun draw(canvas: Canvas) {
+        drawBackground(canvas)
+        drawForeground(canvas)
+    }
+    /** Sky, sun or moon and clouds: everything behind the landscape. */
+    fun drawBackground(canvas: Canvas)
+    /** Rain, snow, fog, haze, lightning: everything in front of the landscape. */
+    fun drawForeground(canvas: Canvas) {}
     /** 0..1 is the normal range; up to 1.5 when the user boosts the intensity slider. */
     fun setIntensity(intensity: Float)
     fun resize(width: Int, height: Int)
@@ -29,6 +37,7 @@ abstract class BaseScene : Scene {
     protected var cloudCover = 50
     protected var timeOfDay = TimeOfDay.DAY
     @JvmField protected var parallax = 0f
+    protected var sized = false
 
     protected val sky = SkyGradient()
 
@@ -43,6 +52,7 @@ abstract class BaseScene : Scene {
         val changed = width != this.width || height != this.height
         this.width = width
         this.height = height
+        sized = true
         if (changed) onResize()
     }
 
@@ -59,7 +69,8 @@ abstract class BaseScene : Scene {
         this.cloudCover = cloudCover
         if (timeOfDay != this.timeOfDay) {
             this.timeOfDay = timeOfDay
-            onTimeOfDayChanged()
+            // Before the first resize there is no size to build shaders for; onResize does it.
+            if (sized) onTimeOfDayChanged()
         }
     }
 

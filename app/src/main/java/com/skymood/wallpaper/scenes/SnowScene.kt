@@ -137,15 +137,14 @@ class SnowScene : BaseScene() {
         if (flakes.activeCount < target) fill(randomY = false)
     }
 
-    override fun draw(canvas: Canvas) {
+    override fun drawBackground(canvas: Canvas) {
         sky.draw(canvas, width, height, SceneType.SNOW, timeOfDay)
-        clouds.draw(canvas)
-        val shift = parallaxPx
-        canvas.save()
-        canvas.translate(shift * 0.5f, 0f)
-        canvas.drawPath(farHill, farHillPaint)
-        canvas.restore()
+        clouds.drawBackground(canvas)
+    }
 
+    override fun drawForeground(canvas: Canvas) {
+        // The landscape layer shows the snowy ground, so no hills are drawn here.
+        val shift = parallaxPx
         val t = timeMs / 1000f
         for (i in 0 until flakes.activeCount) {
             val p = flakes[i]
@@ -164,11 +163,6 @@ class SnowScene : BaseScene() {
                 canvas.restore()
             }
         }
-
-        canvas.save()
-        canvas.translate(shift, 0f)
-        canvas.drawPath(nearHill, nearHillPaint)
-        canvas.restore()
     }
 
     private companion object {

@@ -17,16 +17,29 @@ object WmoMapper {
         else -> WeatherCondition.CLEAR
     }
 
-    fun sceneFor(condition: WeatherCondition, isDay: Boolean): SceneType = when (condition) {
-        WeatherCondition.CLEAR -> if (isDay) SceneType.CLEAR else SceneType.NIGHT
-        WeatherCondition.CLOUDY -> SceneType.CLOUD
-        WeatherCondition.FOG -> SceneType.FOG
-        WeatherCondition.RAIN -> SceneType.RAIN
-        WeatherCondition.SNOW -> SceneType.SNOW
-        WeatherCondition.STORM -> SceneType.STORM
-    }
+    /** Wind at or above this speed turns a dry sky into the Windy scene. */
+    const val WINDY_KMH = 35.0
 
-    fun sceneFor(code: Int, isDay: Boolean): SceneType = sceneFor(conditionFor(code), isDay)
+    /**
+     * The weather layer for a code. Light rain and drizzle share the Drizzle scene; moderate and
+     * heavy rain use Heavy rain. A dry sky with strong wind becomes Windy. Open-Meteo has no
+     * haze code, so Haze is only reachable through the preview override.
+     */
+    fun sceneFor(code: Int, windKmh: Double = 0.0): SceneType {
+        val base = when (code) {
+            0, 1 -> SceneType.CLEAR
+            2 -> SceneType.PARTLY_CLOUDY
+            3 -> SceneType.OVERCAST
+            45, 48 -> SceneType.FOG
+            in 51..57, 61, 66, 80 -> SceneType.DRIZZLE
+            63, 65, 67, 81, 82 -> SceneType.HEAVY_RAIN
+            in 71..77, 85, 86 -> SceneType.SNOW
+            in 95..99 -> SceneType.STORM
+            else -> SceneType.CLEAR
+        }
+        val dry = base == SceneType.CLEAR || base == SceneType.PARTLY_CLOUDY || base == SceneType.OVERCAST
+        return if (dry && windKmh >= WINDY_KMH) SceneType.WINDY else base
+    }
 
     /**
      * Intensity 0..1. Rain and snow use the code's nominal strength, raised by the measured

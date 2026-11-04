@@ -66,7 +66,7 @@ class WeatherRepositoryTest {
         assertEquals(18.0, cached.windSpeedKmh, 0.0)
         assertEquals(paris, cached.location)
         assertEquals(1_000L, cached.updatedAtMillis)
-        assertEquals(SceneType.RAIN, cached.scene)
+        assertEquals(SceneType.HEAVY_RAIN, cached.scene)
         assertEquals(paris, store.locationFlow.value)
     }
 

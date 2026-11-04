@@ -59,16 +59,24 @@ class SkyGradient {
 
         /** How grey the sky is for each scene, 0 = clear blue, 1 = fully overcast. */
         private fun overcast(scene: SceneType): Float = when (scene) {
-            SceneType.CLEAR, SceneType.NIGHT -> 0f
-            SceneType.CLOUD -> 0.5f
+            SceneType.CLEAR -> 0f
+            SceneType.PARTLY_CLOUDY -> 0.3f
+            SceneType.WINDY -> 0.25f
+            SceneType.HAZE -> 0.35f
+            SceneType.OVERCAST -> 0.75f
             SceneType.SNOW -> 0.6f
             SceneType.FOG -> 0.75f
-            SceneType.RAIN -> 0.8f
+            SceneType.DRIZZLE -> 0.7f
+            SceneType.HEAVY_RAIN -> 0.85f
             SceneType.STORM -> 0.95f
         }
 
-        private fun storm(scene: SceneType, c: Int) =
-            if (scene == SceneType.STORM) blend(c, Color.BLACK, 0.35f) else c
+        /** Storms darken the sky; haze gives it a dusty yellow-brown cast. */
+        private fun storm(scene: SceneType, c: Int) = when (scene) {
+            SceneType.STORM -> blend(c, Color.BLACK, 0.35f)
+            SceneType.HAZE -> blend(c, 0xFFC9A673.toInt(), 0.4f)
+            else -> c
+        }
 
         fun topColor(scene: SceneType, t: TimeOfDay) =
             storm(scene, blend(clearTop.getValue(t), overcastTop.getValue(t), overcast(scene)))

@@ -96,7 +96,7 @@ class ClearScene : BaseScene() {
         if (motes.activeCount < target) fillMotes()
     }
 
-    override fun draw(canvas: Canvas) {
+    override fun drawBackground(canvas: Canvas) {
         sky.draw(canvas, width, height, SceneType.CLEAR, dayTime)
 
         val cx = sunX() + parallaxPx
@@ -109,7 +109,9 @@ class ClearScene : BaseScene() {
         flare(canvas, cx + dx * 0.55f, cy + dy * 0.55f, sunRadius * 0.55f)
         flare(canvas, cx + dx * 0.9f, cy + dy * 0.9f, sunRadius * 0.3f)
         flare(canvas, cx + dx * 1.35f, cy + dy * 1.35f, sunRadius * 0.9f)
+    }
 
+    override fun drawForeground(canvas: Canvas) {
         for (i in 0 until motes.activeCount) {
             val p = motes[i]
             val twinkle = 0.6f + 0.4f * sin(timeMs / 600f + p.phase)

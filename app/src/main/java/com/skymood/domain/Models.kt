@@ -22,14 +22,17 @@ data class WeatherState(
     val updatedAtMillis: Long,
 ) {
     val condition: WeatherCondition get() = WmoMapper.conditionFor(weatherCode)
-    val scene: SceneType get() = WmoMapper.sceneFor(condition, isDay)
+    val scene: SceneType get() = WmoMapper.sceneFor(weatherCode, windSpeedKmh)
     val intensity: Float get() = WmoMapper.intensityFor(weatherCode, precipitationMm, cloudCover)
 }
 
 @Serializable
 data class Settings(
-    /** null means Auto (follow the real weather). */
+    /** Weather preview override; null means Auto (follow the real weather). */
     val previewOverride: SceneType? = null,
+    /** Time-of-day preview override; null means Auto (follow the clock and is_day). */
+    val timeOverride: TimeOfDay? = null,
+    val landscape: LandscapeType = LandscapeType.FOREST,
     /** Multiplier applied to the weather intensity, 0.25..1.5. */
     val intensity: Float = 1f,
     /** 15, 30 or 60. */

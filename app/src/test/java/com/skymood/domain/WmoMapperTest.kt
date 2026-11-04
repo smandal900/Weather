@@ -29,21 +29,28 @@ class WmoMapperTest {
     }
 
     @Test
-    fun `clear sky uses night scene after dark`() {
-        assertEquals(SceneType.CLEAR, WmoMapper.sceneFor(0, isDay = true))
-        assertEquals(SceneType.NIGHT, WmoMapper.sceneFor(0, isDay = false))
-        assertEquals(SceneType.NIGHT, WmoMapper.sceneFor(1, isDay = false))
+    fun `codes map to the ten weather scenes`() {
+        assertEquals(SceneType.CLEAR, WmoMapper.sceneFor(0))
+        assertEquals(SceneType.CLEAR, WmoMapper.sceneFor(1))
+        assertEquals(SceneType.PARTLY_CLOUDY, WmoMapper.sceneFor(2))
+        assertEquals(SceneType.OVERCAST, WmoMapper.sceneFor(3))
+        assertEquals(SceneType.FOG, WmoMapper.sceneFor(45))
+        assertEquals(SceneType.DRIZZLE, WmoMapper.sceneFor(51))
+        assertEquals(SceneType.DRIZZLE, WmoMapper.sceneFor(61))
+        assertEquals(SceneType.HEAVY_RAIN, WmoMapper.sceneFor(63))
+        assertEquals(SceneType.HEAVY_RAIN, WmoMapper.sceneFor(82))
+        assertEquals(SceneType.SNOW, WmoMapper.sceneFor(75))
+        assertEquals(SceneType.STORM, WmoMapper.sceneFor(95))
     }
 
     @Test
-    fun `other conditions keep their scene at night`() {
-        assertEquals(SceneType.CLOUD, WmoMapper.sceneFor(3, isDay = false))
-        assertEquals(SceneType.FOG, WmoMapper.sceneFor(45, isDay = false))
-        assertEquals(SceneType.RAIN, WmoMapper.sceneFor(63, isDay = false))
-        assertEquals(SceneType.SNOW, WmoMapper.sceneFor(75, isDay = true))
-        assertEquals(SceneType.STORM, WmoMapper.sceneFor(95, isDay = true))
+    fun `strong wind makes a dry sky windy but not a wet one`() {
+        assertEquals(SceneType.WINDY, WmoMapper.sceneFor(0, windKmh = 40.0))
+        assertEquals(SceneType.WINDY, WmoMapper.sceneFor(3, windKmh = 35.0))
+        assertEquals(SceneType.PARTLY_CLOUDY, WmoMapper.sceneFor(2, windKmh = 34.0))
+        assertEquals(SceneType.HEAVY_RAIN, WmoMapper.sceneFor(65, windKmh = 60.0))
+        assertEquals(SceneType.STORM, WmoMapper.sceneFor(95, windKmh = 60.0))
     }
-
     @Test
     fun `rain intensity grows with code and precipitation`() {
         val drizzle = WmoMapper.intensityFor(51)

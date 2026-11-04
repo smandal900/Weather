@@ -55,7 +55,7 @@ class StormScene : BaseScene() {
     private fun buildBolt() {
         var x = width * (0.15f + Random.nextFloat() * 0.7f)
         var y = 0f
-        val step = height * 0.55f / BOLT_SEGMENTS
+        val step = height * 0.7f / BOLT_SEGMENTS
         var i = 0
         for (s in 0 until BOLT_SEGMENTS) {
             val nx = x + (Random.nextFloat() - 0.5f) * width * 0.08f
@@ -85,14 +85,20 @@ class StormScene : BaseScene() {
         }
     }
 
-    override fun draw(canvas: Canvas) {
+    override fun drawBackground(canvas: Canvas) {
         sky.draw(canvas, width, height, SceneType.STORM, timeOfDay)
-        clouds.draw(canvas)
-        rain.draw(canvas)
+        if (flashMs > 0f) {
+            // The bolt strikes behind the landscape.
+            boltPaint.alpha = (255 * (flashMs / FLASH_MS).coerceIn(0f, 1f)).toInt()
+            canvas.drawLines(bolt, boltPaint)
+        }
+        clouds.drawBackground(canvas)
+    }
+
+    override fun drawForeground(canvas: Canvas) {
+        rain.drawForeground(canvas)
         if (flashMs > 0f) {
             val f = (flashMs / FLASH_MS).coerceIn(0f, 1f)
-            boltPaint.alpha = (255 * f).toInt()
-            canvas.drawLines(bolt, boltPaint)
             flashPaint.alpha = (200 * f * f).toInt()
             canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), flashPaint)
         }

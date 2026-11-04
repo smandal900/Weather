@@ -105,8 +105,8 @@ class NightScene : BaseScene() {
         }
     }
 
-    override fun draw(canvas: Canvas) {
-        sky.draw(canvas, width, height, SceneType.NIGHT, TimeOfDay.NIGHT)
+    override fun drawBackground(canvas: Canvas) {
+        sky.draw(canvas, width, height, SceneType.CLEAR, TimeOfDay.NIGHT)
         val shift = parallaxPx
         for (i in 0 until NEBULA) {
             nebulaPaint.shader = nebulaShaders[nebulaTint[i]]

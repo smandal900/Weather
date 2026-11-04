@@ -57,10 +57,12 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
+import com.skymood.domain.LandscapeType
 import com.skymood.domain.SavedLocation
 import com.skymood.domain.SceneSelector
 import com.skymood.domain.SceneType
 import com.skymood.domain.Settings
+import com.skymood.domain.TimeOfDay
 import com.skymood.domain.WeatherCondition
 import com.skymood.domain.WeatherState
 import com.skymood.skyMood
@@ -333,7 +335,6 @@ private fun LocationCard(
 
 @Composable
 private fun AnimationCard(settings: Settings, onChange: ((Settings) -> Settings) -> Unit) {
-    var menuOpen by remember { mutableStateOf(false) }
     var intensity by remember(settings.intensity) { mutableFloatStateOf(settings.intensity) }
     var dimLevel by remember(settings.dim) { mutableFloatStateOf(settings.dim) }
     var fpsIndex by remember(settings.fpsCap) {
@@ -344,24 +345,24 @@ private fun AnimationCard(settings: Settings, onChange: ((Settings) -> Settings)
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Animation", style = MaterialTheme.typography.titleMedium)
 
-            Text("Preview override", style = MaterialTheme.typography.labelLarge)
-            Box {
-                OutlinedButton(onClick = { menuOpen = true }) {
-                    Text(settings.previewOverride?.label ?: "Auto (real weather)")
-                }
-                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                    DropdownMenuItem(text = { Text("Auto (real weather)") }, onClick = {
-                        menuOpen = false
-                        onChange { it.copy(previewOverride = null) }
-                    })
-                    SceneType.entries.forEach { type ->
-                        DropdownMenuItem(text = { Text(type.label) }, onClick = {
-                            menuOpen = false
-                            onChange { it.copy(previewOverride = type) }
-                        })
-                    }
-                }
-            }
+            Picker(
+                title = "Landscape",
+                current = settings.landscape.label,
+                options = LandscapeType.entries.map { it.label to it },
+                onPick = { type -> onChange { it.copy(landscape = type) } },
+            )
+            Picker(
+                title = "Preview weather",
+                current = settings.previewOverride?.label ?: "Auto (real weather)",
+                options = listOf("Auto (real weather)" to null) + SceneType.entries.map { it.label to it },
+                onPick = { type -> onChange { it.copy(previewOverride = type) } },
+            )
+            Picker(
+                title = "Preview time of day",
+                current = settings.timeOverride?.label ?: "Auto (clock)",
+                options = listOf("Auto (clock)" to null) + TimeOfDay.entries.map { it.label to it },
+                onPick = { time -> onChange { it.copy(timeOverride = time) } },
+            )
 
             Text("Intensity: ${(intensity * 100).roundToInt()}%", style = MaterialTheme.typography.labelLarge)
             Slider(
@@ -402,6 +403,24 @@ private fun AnimationCard(settings: Settings, onChange: ((Settings) -> Settings)
                     checked = settings.showTemperature,
                     onCheckedChange = { on -> onChange { it.copy(showTemperature = on) } },
                 )
+            }
+        }
+    }
+}
+
+/** A labelled dropdown. [options] pairs a display label with its value. */
+@Composable
+private fun <T> Picker(title: String, current: String, options: List<Pair<String, T>>, onPick: (T) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Text(title, style = MaterialTheme.typography.labelLarge)
+    Box {
+        OutlinedButton(onClick = { open = true }) { Text(current) }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            options.forEach { (label, value) ->
+                DropdownMenuItem(text = { Text(label) }, onClick = {
+                    open = false
+                    onPick(value)
+                })
             }
         }
     }

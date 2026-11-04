@@ -49,12 +49,37 @@ adb shell am start -a android.service.wallpaper.CHANGE_LIVE_WALLPAPER --ecn andr
 Weather refreshes every 30 minutes in the background (when online) and whenever you tap
 **Refresh now**. The wallpaper switches scenes live, with a 2-second cross-fade.
 
-## Test each scene with the Preview override
+## Scenes: 4 times x 12 landscapes x 10 weathers = 480
 
-In the app, under **Animation → Preview override**, pick Clear, Night, Clouds, Fog, Rain, Snow
-or Storm. Both the in-app preview and the actual wallpaper switch to that scene immediately,
-regardless of the real weather. Pick **Auto (real weather)** to go back.
+Every frame is three layers: the sky (gradient, sun or moon, clouds), the **landscape**, and the
+weather in front (rain, snow, fog, haze, lightning flashes).
 
+- **Time of day** (Morning, Day, Evening, Night) follows the clock and Open-Meteo's `is_day`.
+  It sets the sky colours and lights the landscape: warm at morning and evening, dark blue at
+  night, with village windows and boat lamps lit after dark.
+- **Landscape** is picked in settings: Forest, Mountain, Hill, Sea beach, Open sea, Sea with
+  boat, Grass field, Lake, River valley, Waterfall, Snowy peaks or Countryside village.
+- **Weather** follows the live data: Clear, Partly cloudy, Overcast, Drizzle, Heavy rain,
+  Thunderstorm, Fog / mist, Snow, Windy and Haze. Snow whitens the ground and rooftops; rain and
+  storms darken and desaturate the landscape; wind sways grass, reeds, palms and boats.
+
+## Test any scene with the preview overrides
+
+In the app, under **Animation**, pick a **Landscape**, a **Preview weather** and a **Preview
+time of day**. The in-app preview and the actual wallpaper switch immediately (with a 2-second
+cross-fade). Pick **Auto** to go back to the real weather and clock.
+
+Debug builds can also be driven from adb, which is handy for stepping through all 480 scenes:
+
+```bash
+adb shell am broadcast -n com.skymood/.debug.DebugSceneReceiver --es weather STORM --es time DUSK --es landscape LAKE
+```
+
+Use the enum names (`CLEAR`, `PARTLY_CLOUDY`, `OVERCAST`, `DRIZZLE`, `HEAVY_RAIN`, `STORM`,
+`FOG`, `SNOW`, `WINDY`, `HAZE`; `DAWN`, `DAY`, `DUSK`, `NIGHT`; `FOREST`, `MOUNTAIN`, `HILL`,
+`SEA_BEACH`, `OPEN_SEA`, `SEA_WITH_BOAT`, `GRASS_FIELD`, `LAKE`, `RIVER_VALLEY`, `WATERFALL`,
+`SNOWY_PEAKS`, `COUNTRYSIDE_VILLAGE`), or `auto` to clear an override. The receiver is only in the
+debug build.
 The **Intensity** slider scales particle counts (for example rain goes from about 150 drops when
 light to about 600 when heavy), **Frame rate cap** chooses 15, 30 or 60 FPS, and **Show
 temperature** draws a small temperature label in the top-right corner of the wallpaper.
@@ -77,22 +102,25 @@ app/src/main/java/com/skymood/
  ├─ domain/      WeatherCondition, SceneType, WmoMapper, SceneSelector, models
  ├─ wallpaper/   SkyWallpaperService (+ SkyEngine), SceneDirector (scene switching, cross-fade,
  │               temperature overlay), render/ (FrameRenderer, CanvasFrameRenderer),
- │               scenes/ (Clear, Night, Cloud, Fog, Rain, Snow, Storm + SkyGradient),
+ │               scenes/ (ClearSky = Clear/Night, Cloud, Rain, Storm, Fog, Snow, Windy, Haze,
+ │               SkyGradient, SunGlow), landscape/ (12 landscapes, Lighting, Ridge, Trees, Water),
  │               particles/ (ParticlePool)
  ├─ work/        WeatherRefreshWorker
  └─ ui/          SettingsActivity (Compose), PreviewScreen
 ```
 
-| WMO codes | Condition | Scene |
-|---|---|---|
-| 0, 1 | Clear | ClearScene by day, NightScene at night (`is_day`) |
-| 2, 3 | Cloudy | CloudScene, density from `cloud_cover` |
-| 45, 48 | Fog | FogScene |
-| 51–67, 80–82 | Rain / drizzle | RainScene, intensity from code and `precipitation` |
-| 71–77, 85, 86 | Snow | SnowScene |
-| 95–99 | Thunderstorm | StormScene (clouds + rain + lightning) |
-
-Every scene implements `Scene` (`update(dtMs)`, `draw(canvas)`, `setIntensity(float)`,
+| WMO codes | Weather scene |
+|---|---|
+| 0, 1 | Clear (sun by day, moon, stars and Milky Way at night) |
+| 2 | Partly cloudy |
+| 3 | Overcast |
+| 45, 48 | Fog / mist |
+| 51–57, 61, 66, 80 | Drizzle (light rain) |
+| 63, 65, 67, 81, 82 | Heavy rain |
+| 71–77, 85, 86 | Snow |
+| 95–99 | Thunderstorm |
+| any dry code with wind of 35 km/h or more | Windy |
+Every weather scene implements `Scene` (`update(dtMs)`, `draw(canvas)` split into `drawBackground` and `drawForeground`, `setIntensity(float)`,
 `resize(w, h)`). Particles come from fixed-size pools allocated up front, and streaks are batched
 into one `drawLines` call per layer, so the draw loop does not allocate. The render loop stops
 when the wallpaper is not visible.
@@ -124,6 +152,14 @@ Choices made where the spec left room:
   The app also saves a fresh location each time it opens, which is what background refreshes use
   when background location is not granted.
 - **Preview override intensity** is a fixed 70%, scaled by the intensity slider.
+- **Haze** has no WMO code in Open-Meteo, so it only appears through the preview override.
+- **Windy** replaces Clear, Partly cloudy or Overcast when the wind is 35 km/h or more. A forced
+  Windy preview uses at least 50 km/h.
+- **Light rain** (codes 61, 66, 80) uses the Drizzle scene; moderate and heavy rain use Heavy rain.
+- **Morning / Evening** are the dawn and dusk buckets: 05:00–07:59 and 17:00–20:59 in daylight.
+- **Landscape** defaults to Forest and is never chosen automatically.
+- **Cross-fade** captures the old frame once into a reusable bitmap and fades it out, so changes
+  of weather, time of day or landscape all blend smoothly.
 - **Settings** and the cached weather are each stored as one JSON string in Preferences DataStore.
 - **Readability:** a dim layer (default 35%, adjustable under Animation) darkens the top and bottom of the wallpaper, clouds are semi-transparent, and the engine reports dark wallpaper colors so launchers keep light text.
 - `FOREGROUND_SERVICE` turned out not to be needed and is not declared.
