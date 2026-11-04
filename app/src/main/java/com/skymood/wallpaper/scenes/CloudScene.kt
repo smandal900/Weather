@@ -1,6 +1,7 @@
 package com.skymood.wallpaper.scenes
 
 import android.graphics.Canvas
+import android.graphics.Color
 import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Shader
@@ -38,6 +39,64 @@ class CloudScene(
     private val clouds = ParticlePool(MAX_CLOUDS)
     private val bodyPaints = Array(LAYERS) { Paint(Paint.ANTI_ALIAS_FLAG) }
     private val highlightPaints = Array(LAYERS) { Paint(Paint.ANTI_ALIAS_FLAG) }
+    /**
+     * Fluffy cloud sprites, one per template, painted once from dozens of soft, shaded puffs
+     * (bright tops, greyer bases) in neutral grey, then tinted per layer when drawn.
+     */
+    private val sprites = arrayOfNulls<android.graphics.Bitmap>(TEMPLATES)
+    private var spriteScale = 1f
+    private val spritePaints = Array(LAYERS) { Paint(Paint.FILTER_BITMAP_FLAG) }
+    private val dst = android.graphics.RectF()
+
+    private fun bakeSprites() {
+        for (s in sprites) s?.recycle()
+        spriteScale = unit * 1.3f
+        val rnd = Random(77)
+        for (t in 0 until TEMPLATES) {
+            val bw = (SPRITE_W * spriteScale).toInt().coerceAtLeast(8)
+            val bh = (SPRITE_H * spriteScale).toInt().coerceAtLeast(8)
+            val bmp = runCatching { android.graphics.Bitmap.createBitmap(bw, bh, android.graphics.Bitmap.Config.ARGB_8888) }.getOrNull()
+            sprites[t] = bmp
+            bmp ?: continue
+            val c = Canvas(bmp)
+            c.scale(spriteScale, spriteScale)
+            c.translate(0f, -SPRITE_TOP)
+            val n = templateCount[t]
+            // Collect soft sub-puffs, then paint from the bottom up so bright tops sit in front.
+            val px = ArrayList<Float>(); val py = ArrayList<Float>(); val pr = ArrayList<Float>()
+            for (i in 0 until n) {
+                val r = templateR[t][i]
+                repeat(10) {
+                    val a = rnd.nextFloat() * 6.283f
+                    val d = r * 0.6f * kotlin.math.sqrt(rnd.nextFloat())
+                    px += templateX[t][i] + kotlin.math.cos(a) * d
+                    py += templateY[t][i] + kotlin.math.sin(a) * d * 0.8f
+                    pr += r * (0.32f + rnd.nextFloat() * 0.33f)
+                }
+            }
+            val order = py.indices.sortedByDescending { py[it] }
+            var minY = Float.MAX_VALUE; var maxY = -Float.MAX_VALUE
+            for (y in py) { minY = minOf(minY, y); maxY = maxOf(maxY, y) }
+            val p = Paint(Paint.ANTI_ALIAS_FLAG)
+            // Dense core so no sky shows through the middle.
+            p.color = Color.rgb(170, 175, 182)
+            for (i in 0 until n) c.drawCircle(templateX[t][i], templateY[t][i] + templateR[t][i] * 0.1f, templateR[t][i] * 0.72f, p)
+            for (k in order) {
+                val f = ((py[k] - minY) / (maxY - minY + 1f)).coerceIn(0f, 1f)
+                val v = (255 * (1f - 0.42f * f + (rnd.nextFloat() - 0.5f) * 0.06f)).toInt().coerceIn(0, 255)
+                val col = Color.rgb(v, v, (v + 6).coerceAtMost(255))
+                p.shader = android.graphics.RadialGradient(
+                    px[k], py[k], pr[k],
+                    intArrayOf(col, col and 0x00FFFFFF or 0xCC000000.toInt(), col and 0x00FFFFFF),
+                    floatArrayOf(0f, 0.55f, 1f), Shader.TileMode.CLAMP,
+                )
+                c.drawCircle(px[k], py[k], pr[k], p)
+            }
+        }
+    }
+
+    /** Soft outer edge so clouds fade into the sky instead of ending in a hard line. */
+    private val softPaints = Array(LAYERS) { Paint(Paint.ANTI_ALIAS_FLAG) }
 
     // Thin, wide stratus streaks far behind the clouds when the sky is mostly covered.
     private val streakPaint = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -89,6 +148,7 @@ class CloudScene(
 
     override fun onResize() {
         unit = width / 1080f
+        bakeSprites()
         sun.setup(min(width, height) * 0.075f, warm = timeOfDay != TimeOfDay.DAY)
         for (i in 0 until STREAKS) {
             streakX[i] = Random.nextFloat() * width
@@ -142,6 +202,13 @@ class CloudScene(
                 Shader.TileMode.CLAMP,
             )
             bodyPaints[l].shader = shader
+            spritePaints[l].colorFilter = android.graphics.PorterDuffColorFilter(
+                SkyGradient.blend(light, skyColor, haze * 0.8f), android.graphics.PorterDuff.Mode.MULTIPLY,
+            )
+            val edge = SkyGradient.blend(top, base, 0.35f)
+            softPaints[l].shader = android.graphics.RadialGradient(
+                0f, 0f, 1f, intArrayOf(edge, edge and 0x00FFFFFF or 0x66000000, 0), floatArrayOf(0f, 0.78f, 1f), Shader.TileMode.CLAMP,
+            )
             highlightPaints[l].color = SkyGradient.blend(top, 0xFFFFFFFF.toInt(), 0.6f)
             highlightPaints[l].alpha = if (night) 20 else 50 - l * 10
         }
@@ -258,13 +325,31 @@ class CloudScene(
         val xs = templateX[t]
         val ys = templateY[t]
         val rs = templateR[t]
+        val sprite = sprites[t]
+        if (sprite != null) {
+            dst.set(
+                p.x + shift, p.y + SPRITE_TOP * p.size,
+                p.x + shift + SPRITE_W * p.size, p.y + (SPRITE_TOP + SPRITE_H) * p.size,
+            )
+            canvas.drawBitmap(sprite, null, dst, spritePaints[layer])
+            return
+        }
         val body = bodyPaints[layer]
         val hi = highlightPaints[layer]
         val breathe = 1f + 0.02f * sin(timeMs / 3000f + p.phase)
         canvas.save()
         canvas.translate(p.x + shift, p.y)
         canvas.scale(p.size, p.size)
-        for (i in 0 until n) canvas.drawCircle(xs[i], ys[i], rs[i] * breathe, body)
+        val soft = softPaints[layer]
+        for (i in 0 until n) {
+            val r = rs[i] * breathe * 1.22f
+            canvas.save()
+            canvas.translate(xs[i], ys[i])
+            canvas.scale(r, r)
+            canvas.drawCircle(0f, 0f, 1f, soft)
+            canvas.restore()
+        }
+        for (i in 0 until n) canvas.drawCircle(xs[i], ys[i], rs[i] * breathe * 0.94f, body)
         // Sunlit tops: smaller translucent puffs nudged up and left give the clouds volume.
         for (i in 0 until n) {
             val r = rs[i] * breathe
@@ -279,5 +364,9 @@ class CloudScene(
         const val TEMPLATES = 5
         const val MAX_PUFFS = 10
         const val STREAKS = 5
+        // Sprite bounds in cloud units.
+        const val SPRITE_W = 440f
+        const val SPRITE_H = 270f
+        const val SPRITE_TOP = -80f
     }
 }
