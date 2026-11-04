@@ -66,19 +66,21 @@ class SunGlow {
     }
 
     /** @param strength 0..1, lowers everything when the sun is behind clouds. */
-    fun draw(canvas: Canvas, cx: Float, cy: Float, timeMs: Float, strength: Float, showCore: Boolean) {
+    fun draw(canvas: Canvas, cx: Float, cy: Float, timeMs: Float, strength: Float, showCore: Boolean, rays: Boolean = true) {
         val a = (255 * strength).toInt().coerceIn(0, 255)
         haloPaint.alpha = a
         rayPaint.alpha = a
         canvas.save()
         canvas.translate(cx, cy)
-        canvas.save()
-        canvas.rotate(timeMs / 1000f * 1.5f)
-        canvas.drawPath(rays, rayPaint)
-        canvas.rotate(-timeMs / 1000f * 2.6f + 15f)
-        canvas.scale(0.7f, 0.7f)
-        canvas.drawPath(rays, rayPaint)
-        canvas.restore()
+        if (rays) {
+            canvas.save()
+            canvas.rotate(timeMs / 1000f * 1.5f)
+            canvas.drawPath(this.rays, rayPaint)
+            canvas.rotate(-timeMs / 1000f * 2.6f + 15f)
+            canvas.scale(0.7f, 0.7f)
+            canvas.drawPath(this.rays, rayPaint)
+            canvas.restore()
+        }
         val pulse = 1f + 0.04f * sin(timeMs / 1500f)
         canvas.scale(pulse, pulse)
         canvas.drawCircle(0f, 0f, radius * 6f, haloPaint)
