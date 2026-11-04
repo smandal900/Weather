@@ -13,10 +13,11 @@ class Particle {
     var maxLife = 0f
     var phase = 0f
     var layer = 0
+    var variant = 0
 
     fun reset() {
         x = 0f; y = 0f; vx = 0f; vy = 0f; size = 0f; length = 0f
-        alpha = 1f; life = 0f; maxLife = 0f; phase = 0f; layer = 0
+        alpha = 1f; life = 0f; maxLife = 0f; phase = 0f; layer = 0; variant = 0
     }
 }
 

@@ -38,6 +38,20 @@ class RainScene(
 
     private var tilt = 0f
 
+    /** Low rain clouds across the top; only when this scene stands alone (the storm has its own). */
+    private val clouds: CloudScene? = if (drawSky) CloudScene(CloudScene.Style.RAIN, drawSky = false) else null
+    private val mistPaint = Paint()
+
+    override fun setEnvironment(windKmh: Float, cloudCover: Int, timeOfDay: com.skymood.domain.TimeOfDay) {
+        super.setEnvironment(windKmh, cloudCover, timeOfDay)
+        clouds?.setEnvironment(windKmh, cloudCover, timeOfDay)
+    }
+
+    override fun setParallax(offset: Float) {
+        super.setParallax(offset)
+        clouds?.setParallax(offset)
+    }
+
     fun targetDrops(): Int = (150 + 450 * intensity).toInt().coerceIn(0, MAX_DROPS)
 
     override fun onResize() {
@@ -47,9 +61,17 @@ class RainScene(
         drops.clear()
         splashes.clear()
         fill()
+        clouds?.resize(width, height)
+        mistPaint.shader = android.graphics.LinearGradient(
+            0f, height * 0.7f, 0f, height.toFloat(),
+            Color.TRANSPARENT, Color.argb(70, 170, 185, 205), android.graphics.Shader.TileMode.CLAMP,
+        )
     }
 
-    override fun onIntensityChanged() = fill()
+    override fun onIntensityChanged() {
+        fill()
+        clouds?.setIntensity(intensity)
+    }
 
     private fun fill() {
         while (drops.activeCount < targetDrops()) {
@@ -86,6 +108,7 @@ class RainScene(
     }
 
     override fun update(dtMs: Long) {
+        clouds?.update(dtMs)
         tilt = tan(windAngle)
         val dt = dtMs / 1000f
         val target = targetDrops()
@@ -120,6 +143,7 @@ class RainScene(
             sky.draw(canvas, width, height, skyType, timeOfDay)
             canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), hazePaint)
         }
+        clouds?.draw(canvas)
         var near = 0
         var far = 0
         val shift = parallaxPx
@@ -142,6 +166,7 @@ class RainScene(
             splashPaint.alpha = (200 * (s.life / s.maxLife)).toInt().coerceIn(0, 255)
             canvas.drawCircle(s.x + shift, s.y, s.size, splashPaint)
         }
+        if (drawSky) canvas.drawRect(0f, height * 0.7f, width.toFloat(), height.toFloat(), mistPaint)
     }
 
     private companion object {

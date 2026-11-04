@@ -1,77 +1,127 @@
 package com.skymood.wallpaper.scenes
 
 import android.graphics.Canvas
+import android.graphics.Color
 import android.graphics.Paint
-import android.graphics.Path
+import android.graphics.RadialGradient
+import android.graphics.Shader
 import com.skymood.domain.SceneType
 import com.skymood.domain.TimeOfDay
 import com.skymood.wallpaper.particles.Particle
 import com.skymood.wallpaper.particles.ParticlePool
+import kotlin.math.PI
+import kotlin.math.min
+import kotlin.math.sin
 import kotlin.random.Random
 
 /**
- * Slowly drifting cloud layers. The number of clouds follows the cloud cover and the drift
- * speed follows the wind.
+ * Soft, shaded clouds drifting in three depth layers. Each cloud is a cluster of soft puffs:
+ * a shadow puff below and a highlight puff above, so clouds look lit from the sky.
+ * The number of clouds follows the cloud cover and the drift speed follows the wind.
+ * On a cloudy day the sun glows through the gaps.
  *
- * @param drawSky false when composed into another scene (the storm).
- * @param dark true for heavy storm clouds.
+ * @param style colours and placement: plain clouds, rain clouds, storm clouds or snow clouds.
+ * @param drawSky false when composed into another scene.
  */
 class CloudScene(
+    private val style: Style = Style.FAIR,
     private val drawSky: Boolean = true,
-    private val dark: Boolean = false,
 ) : BaseScene() {
 
+    enum class Style { FAIR, RAIN, STORM, SNOW }
+
     private val clouds = ParticlePool(MAX_CLOUDS)
-    private val paints = Array(LAYERS) { Paint(Paint.ANTI_ALIAS_FLAG) }
-    private val shape = Path()
+    private val shadowPaints = Array(LAYERS) { Paint(Paint.ANTI_ALIAS_FLAG) }
+    private val lightPaints = Array(LAYERS) { Paint(Paint.ANTI_ALIAS_FLAG) }
+    private val sun = SunGlow()
     private var unit = 1f
+    private var timeMs = 0f
+
+    // Puff layouts in cloud units (a cloud is about 420 x 200 units). Built once.
+    private val templateX = Array(TEMPLATES) { FloatArray(MAX_PUFFS) }
+    private val templateY = Array(TEMPLATES) { FloatArray(MAX_PUFFS) }
+    private val templateR = Array(TEMPLATES) { FloatArray(MAX_PUFFS) }
+    private val templateCount = IntArray(TEMPLATES)
+
+    init {
+        buildTemplates()
+        applyColors()
+    }
+
+    private fun buildTemplates() {
+        val rnd = Random(7)
+        for (t in 0 until TEMPLATES) {
+            val n = 7 + rnd.nextInt(MAX_PUFFS - 7 + 1)
+            templateCount[t] = n
+            for (i in 0 until n) {
+                val f = i / (n - 1f)
+                val bump = sin(PI * f).toFloat()
+                templateX[t][i] = 30f + f * 360f + (rnd.nextFloat() - 0.5f) * 30f
+                templateR[t][i] = 48f + bump * (40f + rnd.nextFloat() * 45f)
+                // Flat-ish base, taller in the middle.
+                templateY[t][i] = 150f - templateR[t][i] * 0.55f - bump * rnd.nextFloat() * 25f
+            }
+        }
+    }
 
     override fun onResize() {
         unit = width / 1080f
-        buildShape()
+        sun.setup(min(width, height) * 0.075f, warm = timeOfDay != TimeOfDay.DAY)
         clouds.clear()
         fill(randomX = true)
     }
 
     override fun onIntensityChanged() = fill(randomX = true)
 
-    override fun onTimeOfDayChanged() = applyColors()
-
-    init {
+    override fun onTimeOfDayChanged() {
         applyColors()
-    }
-
-    /** One cloud silhouette, about 400 x 160 units, reused for every cloud via canvas transforms. */
-    private fun buildShape() {
-        shape.reset()
-        shape.addCircle(120f, 90f, 70f, Path.Direction.CW)
-        shape.addCircle(200f, 60f, 85f, Path.Direction.CW)
-        shape.addCircle(290f, 85f, 65f, Path.Direction.CW)
-        shape.addCircle(60f, 120f, 45f, Path.Direction.CW)
-        shape.addCircle(350f, 120f, 45f, Path.Direction.CW)
-        shape.addRoundRect(40f, 100f, 380f, 165f, 32f, 32f, Path.Direction.CW)
+        if (width > 1) sun.setup(min(width, height) * 0.075f, warm = timeOfDay != TimeOfDay.DAY)
     }
 
     private fun applyColors() {
         val night = timeOfDay == TimeOfDay.NIGHT
         val warm = timeOfDay == TimeOfDay.DAWN || timeOfDay == TimeOfDay.DUSK
-        val base = when {
-            dark && night -> 0xFF1E222A.toInt()
-            dark -> 0xFF3C424C.toInt()
-            night -> 0xFF3A4252.toInt()
-            warm -> 0xFFCDB3AE.toInt()
-            else -> 0xFFD3DAE2.toInt()
+        val (shadow, light) = when (style) {
+            Style.FAIR -> when {
+                night -> 0xFF222836.toInt() to 0xFF505B72.toInt()
+                warm -> 0xFF9C7B8E.toInt() to 0xFFFFE0CC.toInt()
+                else -> 0xFFA9B8CC.toInt() to 0xFFFFFFFF.toInt()
+            }
+            Style.SNOW -> if (night) 0xFF262B36.toInt() to 0xFF59627A.toInt()
+            else 0xFF97A1B0.toInt() to 0xFFF0F3F7.toInt()
+            Style.RAIN -> if (night) 0xFF14171D.toInt() to 0xFF333A47.toInt()
+            else 0xFF4A525F.toInt() to 0xFF8D97A5.toInt()
+            Style.STORM -> if (night) 0xFF0E1015.toInt() to 0xFF262A33.toInt()
+            else 0xFF2E333C.toInt() to 0xFF5E6672.toInt()
         }
         for (l in 0 until LAYERS) {
-            val p = paints[l]
-            p.color = base
-            p.alpha = when (l) { 0 -> 175; 1 -> 135; else -> 100 } // 0 = nearest; kept soft so icons stay readable
+            // Far layers fade towards the sky colour.
+            val fade = l * 0.22f
+            shadowPaints[l].shader = puffShader(SkyGradient.blend(shadow, light, fade * 0.6f))
+            lightPaints[l].shader = puffShader(light)
+            val alpha = when (l) { 0 -> 245; 1 -> 205; else -> 160 }
+            shadowPaints[l].alpha = alpha
+            lightPaints[l].alpha = alpha
         }
     }
 
+    /** Unit-radius soft puff, scaled per puff with canvas transforms. */
+    private fun puffShader(color: Int): Shader {
+        val solid = color or 0xFF000000.toInt()
+        val edge = color and 0x00FFFFFF or 0x99000000.toInt()
+        return RadialGradient(
+            0f, 0f, 1f,
+            intArrayOf(solid, solid, edge, Color.TRANSPARENT), floatArrayOf(0f, 0.55f, 0.8f, 1f),
+            Shader.TileMode.CLAMP,
+        )
+    }
+
     private fun targetClouds(): Int {
-        val cover = if (dark) 1f else cloudCover / 100f
-        return (3 + 11 * maxOf(cover, intensity * 0.6f)).toInt().coerceIn(2, MAX_CLOUDS)
+        val cover = when (style) {
+            Style.FAIR -> cloudCover / 100f
+            else -> 0.85f
+        }
+        return (4 + 10 * maxOf(cover, intensity * 0.5f)).toInt().coerceIn(2, MAX_CLOUDS)
     }
 
     private fun fill(randomX: Boolean) {
@@ -83,17 +133,21 @@ class CloudScene(
 
     private fun spawn(p: Particle, randomX: Boolean) {
         p.layer = Random.nextInt(LAYERS)
-        val depth = 1f - p.layer * 0.28f
-        p.size = unit * depth * (0.8f + Random.nextFloat() * 0.9f) // scale factor
-        p.y = height * (0.04f + Random.nextFloat() * if (dark) 0.35f else 0.5f) * (1f + p.layer * 0.1f)
-        p.x = if (randomX) Random.nextFloat() * (width + 400f * p.size) - 400f * p.size else -420f * p.size
-        p.vx = depth * (0.5f + Random.nextFloat() * 0.5f)
+        p.variant = Random.nextInt(TEMPLATES)
+        val depth = 1f - p.layer * 0.25f
+        val big = if (style == Style.FAIR) 1f else 1.25f
+        p.size = unit * depth * big * (0.95f + Random.nextFloat() * 0.9f)
+        val band = if (style == Style.FAIR) 0.55f else 0.28f
+        p.y = height * (-0.03f + Random.nextFloat() * band) + p.layer * height * 0.02f
+        p.x = if (randomX) Random.nextFloat() * (width + 420f * p.size) - 420f * p.size else -430f * p.size
+        p.vx = depth * (0.6f + Random.nextFloat() * 0.4f)
+        p.phase = Random.nextFloat() * 6.28f
     }
 
     override fun update(dtMs: Long) {
+        timeMs += dtMs
         val dt = dtMs / 1000f
-        // Pixels per second: a gentle drift when calm, faster in strong wind.
-        val speed = (10f + windKmh * 2.2f) * unit
+        val speed = (9f + windKmh * 2f) * unit
         val target = targetClouds()
         for (i in clouds.activeCount - 1 downTo 0) {
             val p = clouds[i]
@@ -106,26 +160,64 @@ class CloudScene(
     }
 
     override fun draw(canvas: Canvas) {
-        if (drawSky) sky.draw(canvas, width, height, SceneType.CLOUD, timeOfDay)
+        if (drawSky) {
+            val skyType = when (style) {
+                Style.FAIR -> SceneType.CLOUD
+                Style.SNOW -> SceneType.SNOW
+                Style.RAIN -> SceneType.RAIN
+                Style.STORM -> SceneType.STORM
+            }
+            sky.draw(canvas, width, height, skyType, timeOfDay)
+        }
         val shift = parallaxPx
-        // Far layers first.
+        if (style == Style.FAIR && timeOfDay != TimeOfDay.NIGHT && cloudCover < 97) {
+            val strength = (1.1f - cloudCover / 100f).coerceIn(0.35f, 1f)
+            sun.draw(canvas, width * 0.3f + shift * 0.3f, height * 0.34f, timeMs, strength, showCore = cloudCover < 80)
+        }
         for (layer in LAYERS - 1 downTo 0) {
-            val paint = paints[layer]
             val ls = shift * (1f - layer * 0.3f)
             for (i in 0 until clouds.activeCount) {
                 val p = clouds[i]
-                if (p.layer != layer) continue
-                canvas.save()
-                canvas.translate(p.x + ls, p.y)
-                canvas.scale(p.size, p.size)
-                canvas.drawPath(shape, paint)
-                canvas.restore()
+                if (p.layer == layer) drawCloud(canvas, p, ls, layer)
             }
         }
     }
 
+    private fun drawCloud(canvas: Canvas, p: Particle, shift: Float, layer: Int) {
+        val t = p.variant
+        val n = templateCount[t]
+        val xs = templateX[t]
+        val ys = templateY[t]
+        val rs = templateR[t]
+        val shadow = shadowPaints[layer]
+        val light = lightPaints[layer]
+        val breathe = 1f + 0.025f * sin(timeMs / 2600f + p.phase)
+        canvas.save()
+        canvas.translate(p.x + shift, p.y)
+        canvas.scale(p.size, p.size)
+        // Shadow pass: puffs shifted down form the darker underside.
+        for (i in 0 until n) {
+            puff(canvas, xs[i], ys[i] + rs[i] * 0.22f, rs[i] * 1.04f * breathe, shadow)
+        }
+        // Light pass: smaller puffs shifted up form the sunlit tops.
+        for (i in 0 until n) {
+            puff(canvas, xs[i] - rs[i] * 0.05f, ys[i] - rs[i] * 0.12f, rs[i] * 0.86f * breathe, light)
+        }
+        canvas.restore()
+    }
+
+    private fun puff(canvas: Canvas, x: Float, y: Float, r: Float, paint: Paint) {
+        canvas.save()
+        canvas.translate(x, y)
+        canvas.scale(r, r)
+        canvas.drawCircle(0f, 0f, 1f, paint)
+        canvas.restore()
+    }
+
     private companion object {
-        const val MAX_CLOUDS = 16
+        const val MAX_CLOUDS = 14
         const val LAYERS = 3
+        const val TEMPLATES = 5
+        const val MAX_PUFFS = 10
     }
 }

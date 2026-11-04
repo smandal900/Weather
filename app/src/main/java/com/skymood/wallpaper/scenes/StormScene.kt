@@ -13,7 +13,7 @@ import kotlin.random.Random
  */
 class StormScene : BaseScene() {
 
-    private val clouds = CloudScene(drawSky = false, dark = true)
+    private val clouds = CloudScene(CloudScene.Style.STORM, drawSky = false)
     private val rain = RainScene(drawSky = false)
 
     private val flashPaint = Paint().apply { color = Color.WHITE }
