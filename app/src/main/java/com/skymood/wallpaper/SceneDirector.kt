@@ -10,6 +10,7 @@ import android.graphics.Typeface
 import com.skymood.domain.LandscapeType
 import com.skymood.domain.SceneSpec
 import com.skymood.domain.SceneType
+import com.skymood.wallpaper.fauna.Wildlife
 import com.skymood.wallpaper.landscape.Landscape
 import com.skymood.wallpaper.scenes.ClearSkyScene
 import com.skymood.wallpaper.scenes.CloudScene
@@ -47,6 +48,7 @@ class SceneDirector(
     private var height = 0
     private var parallax = 0f
 
+    private val wildlife = Wildlife()
     private var snapshot: Bitmap? = null
     private var snapshotCanvas: Canvas? = null
     private val snapshotPaint = Paint(Paint.FILTER_BITMAP_FLAG)
@@ -76,12 +78,16 @@ class SceneDirector(
         val scene = sceneFor(spec.type)
         scene.setIntensity(spec.intensity)
         scene.setEnvironment(spec.windKmh, spec.cloudCover, spec.timeOfDay)
+        scene.setSky(spec.sky)
         current = scene
         currentType = spec.type
 
         val land = landscapeFor(spec.landscape)
-        land.setConditions(spec.timeOfDay, spec.type, spec.windKmh)
+                // The light comes from the sun by day and from the moon at night.
+        val lightX = if (spec.timeOfDay == com.skymood.domain.TimeOfDay.NIGHT) spec.sky.moonX else spec.sky.sunX
+        land.setConditions(spec.timeOfDay, spec.type, spec.windKmh, lightX)
         landscape = land
+        wildlife.configure(spec, land.groundSlots(), land.wildlifeTint())
 
         dim = spec.dim
         scrimPaint.alpha = (255 * dim).toInt()
@@ -137,24 +143,29 @@ class SceneDirector(
         }
         for (scene in scenes.values) scene.resize(width, height)
         for (land in landscapes.values) land.resize(width, height)
+        wildlife.resize(width, height)
     }
 
     fun setParallax(offset: Float) {
         parallax = offset
         for (scene in scenes.values) scene.setParallax(offset)
         for (land in landscapes.values) land.setParallax(offset)
+        wildlife.setParallax(offset)
     }
 
     fun update(dtMs: Long) {
         current?.update(dtMs)
         landscape?.update(dtMs)
+        wildlife.update(dtMs)
         if (fadeMs > 0f) fadeMs -= dtMs
     }
 
     private fun drawWorld(canvas: Canvas) {
         val scene = current ?: return
         scene.drawBackground(canvas)
+        wildlife.drawSky(canvas)
         landscape?.draw(canvas)
+        wildlife.drawGround(canvas)
         scene.drawForeground(canvas)
     }
 

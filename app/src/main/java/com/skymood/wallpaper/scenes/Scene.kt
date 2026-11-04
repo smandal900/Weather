@@ -1,6 +1,7 @@
 package com.skymood.wallpaper.scenes
 
 import android.graphics.Canvas
+import com.skymood.domain.SkyState
 import com.skymood.domain.TimeOfDay
 
 /**
@@ -25,6 +26,8 @@ interface Scene {
     fun resize(width: Int, height: Int)
 
     fun setEnvironment(windKmh: Float, cloudCover: Int, timeOfDay: TimeOfDay) {}
+    /** Where the sun and moon are, and the moon's phase. */
+    fun setSky(state: SkyState) {}
     /** -1 (first home screen) .. 1 (last home screen). */
     fun setParallax(offset: Float) {}
 }
@@ -36,6 +39,7 @@ abstract class BaseScene : Scene {
     protected var windKmh = 0f
     protected var cloudCover = 50
     protected var timeOfDay = TimeOfDay.DAY
+    protected var skyState = SkyState.DEFAULT
     @JvmField protected var parallax = 0f
     protected var sized = false
 
@@ -76,6 +80,10 @@ abstract class BaseScene : Scene {
 
     override fun setParallax(offset: Float) {
         parallax = offset.coerceIn(-1f, 1f)
+    }
+
+    override fun setSky(state: SkyState) {
+        skyState = state
     }
 
     protected open fun onResize() {}

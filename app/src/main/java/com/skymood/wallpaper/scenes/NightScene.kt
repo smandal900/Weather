@@ -38,11 +38,13 @@ class NightScene : BaseScene() {
 
     private val meteor = Particle()
     private var nextMeteorMs = 6000f
+    private val moon = MoonPainter()
     private var moonRadius = 0f
     private var timeMs = 0f
 
     override fun onResize() {
         moonRadius = min(width, height) * 0.07f
+        moon.setup(moonRadius)
         moonGlow.shader = RadialGradient(
             0f, 0f, moonRadius * 4f,
             intArrayOf(0x55DDE6FF, 0x11AAB8E0, Color.TRANSPARENT), floatArrayOf(0f, 0.4f, 1f),
@@ -133,18 +135,10 @@ class NightScene : BaseScene() {
             canvas.drawLine(meteor.x, meteor.y, meteor.x - meteor.vx * tail, meteor.y - meteor.vy * tail, meteorPaint)
         }
 
-        val mx = width * 0.3f + shift
-        val my = height * 0.34f
-        canvas.save()
-        canvas.translate(mx, my)
-        canvas.drawCircle(0f, 0f, moonRadius * 4f, moonGlow)
-        canvas.drawCircle(0f, 0f, moonRadius, moonPaint)
-        canvas.drawCircle(-moonRadius * 0.35f, -moonRadius * 0.2f, moonRadius * 0.22f, craterPaint)
-        canvas.drawCircle(moonRadius * 0.3f, moonRadius * 0.35f, moonRadius * 0.15f, craterPaint)
-        canvas.drawCircle(moonRadius * 0.25f, -moonRadius * 0.4f, moonRadius * 0.1f, craterPaint)
-        canvas.restore()
+        if (skyState.moonVisible) {
+            moon.draw(canvas, width * skyState.moonX + shift, height * skyState.moonY, skyState.moonPhase)
+        }
     }
-
     private companion object {
         const val MAX_STARS = 320
         const val NEBULA = 16

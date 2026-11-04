@@ -157,7 +157,7 @@ private fun SettingsScreen() {
     }
 
     val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
-    val spec = SceneSelector.select(weather, settings, hour)
+    val spec = SceneSelector.select(weather, settings, hour, System.currentTimeMillis())
 
     Scaffold { padding ->
         Column(
@@ -396,6 +396,14 @@ private fun AnimationCard(settings: Settings, onChange: ((Settings) -> Settings)
                 "Power saver mode always limits the wallpaper to 15 FPS.",
                 style = MaterialTheme.typography.bodySmall,
             )
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Birds and animals", modifier = Modifier.weight(1f))
+                Switch(
+                    checked = settings.wildlife,
+                    onCheckedChange = { on -> onChange { it.copy(wildlife = on) } },
+                )
+            }
 
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Show temperature on wallpaper", modifier = Modifier.weight(1f))

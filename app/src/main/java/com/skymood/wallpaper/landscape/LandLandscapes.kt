@@ -10,11 +10,32 @@ import android.graphics.RadialGradient
 import android.graphics.Shader
 import kotlin.math.max
 import kotlin.math.sin
+import com.skymood.wallpaper.fauna.GroundSlot
+import com.skymood.wallpaper.fauna.GroundY
+import com.skymood.wallpaper.fauna.Species
 import kotlin.random.Random
 
 /** Dense conifer forest in front of a misty mountain range, framed by big pines and a meadow. */
 class ForestLandscape : PaintedLandscape() {
     override val layers = arrayOf(PaintLayer(0.45f, 0.82f, 0.1f), PaintLayer(0.6f, 1f, 0.5f), PaintLayer(0.5f, 1f, 1f))
+
+    private var slots: List<GroundSlot> = emptyList()
+    private var slotsFor = 0
+    override fun groundSlots(): List<GroundSlot> {
+        if (slotsFor != width * 31 + height) {
+            slotsFor = width * 31 + height
+            slots = makeSlots(width.toFloat(), height.toFloat())
+        }
+        return slots
+    }
+
+    private fun makeSlots(w: Float, h: Float): List<GroundSlot> {
+        val r = Ridge(width, h * 0.9f, h * 0.035f, false, 10)
+        return listOf(
+            GroundSlot(Species.DEER, 0.28f, 0.72f, GroundY { x -> r.yAt(x) + h * 0.05f }, 1.15f, 2),
+            GroundSlot(Species.HARE, 0.3f, 0.7f, GroundY { x -> r.yAt(x) + h * 0.075f }, 1f, 1),
+        )
+    }
 
     override fun paintAll(k: PaintKit) = PaintResult(arrayOf(far(k), mid(k), near(k)))
 
@@ -91,6 +112,21 @@ class ForestLandscape : PaintedLandscape() {
 class MountainLandscape : PaintedLandscape() {
     override val layers = arrayOf(PaintLayer(0.4f, 0.8f, 0.1f), PaintLayer(0.5f, 0.92f, 0.45f), PaintLayer(0.62f, 1f, 1f))
 
+    private var slots: List<GroundSlot> = emptyList()
+    private var slotsFor = 0
+    override fun groundSlots(): List<GroundSlot> {
+        if (slotsFor != width * 31 + height) {
+            slotsFor = width * 31 + height
+            slots = makeSlots(width.toFloat(), height.toFloat())
+        }
+        return slots
+    }
+
+    private fun makeSlots(w: Float, h: Float): List<GroundSlot> {
+        val r = Ridge(width, h * 0.9f, h * 0.06f, true, 14)
+        return listOf(GroundSlot(Species.GOAT, 0.15f, 0.85f, GroundY { x -> r.yAt(x) + h * 0.004f }, 1f, 2))
+    }
+
     override fun paintAll(k: PaintKit) = PaintResult(arrayOf(far(k), mid(k), near(k)))
 
     private fun far(k: PaintKit): Bitmap? {
@@ -147,6 +183,24 @@ class MountainLandscape : PaintedLandscape() {
 /** Gentle rolling hills: patchwork fields in the distance, scattered leafy trees, big oaks in front. */
 class HillLandscape : PaintedLandscape() {
     override val layers = arrayOf(PaintLayer(0.5f, 0.86f, 0.1f), PaintLayer(0.6f, 1f, 0.5f), PaintLayer(0.55f, 1f, 1f))
+
+    private var slots: List<GroundSlot> = emptyList()
+    private var slotsFor = 0
+    override fun groundSlots(): List<GroundSlot> {
+        if (slotsFor != width * 31 + height) {
+            slotsFor = width * 31 + height
+            slots = makeSlots(width.toFloat(), height.toFloat())
+        }
+        return slots
+    }
+
+    private fun makeSlots(w: Float, h: Float): List<GroundSlot> {
+        val r = Ridge(width, h * 0.9f, h * 0.045f, false, 10)
+        return listOf(
+            GroundSlot(Species.SHEEP, 0.2f, 0.8f, GroundY { x -> r.yAt(x) + h * 0.05f }, 1f, 4),
+            GroundSlot(Species.COW, 0.3f, 0.7f, GroundY { x -> r.yAt(x) + h * 0.07f }, 1.2f, 1),
+        )
+    }
 
     override fun paintAll(k: PaintKit) = PaintResult(arrayOf(far(k), mid(k), near(k)))
 
@@ -206,6 +260,24 @@ class HillLandscape : PaintedLandscape() {
 /** A meadow with grass that sways in the wind, in front of a leafy tree line and a big oak. */
 class GrassFieldLandscape : PaintedLandscape() {
     override val layers = arrayOf(PaintLayer(0.55f, 0.8f, 0.15f), PaintLayer(0.62f, 1f, 0.6f))
+
+    private var slots: List<GroundSlot> = emptyList()
+    private var slotsFor = 0
+    override fun groundSlots(): List<GroundSlot> {
+        if (slotsFor != width * 31 + height) {
+            slotsFor = width * 31 + height
+            slots = makeSlots(width.toFloat(), height.toFloat())
+        }
+        return slots
+    }
+
+    private fun makeSlots(w: Float, h: Float): List<GroundSlot> {
+        val r = Ridge(width, h * 0.78f, h * 0.015f, false, 15)
+        return listOf(
+            GroundSlot(Species.COW, 0.05f, 0.65f, GroundY { x -> r.yAt(x) + h * 0.09f }, 1.5f, 2),
+            GroundSlot(Species.HORSE, 0.1f, 0.6f, GroundY { x -> r.yAt(x) + h * 0.07f }, 1.3f, 1),
+        )
+    }
 
     private val darkBlade = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND }
     private val lightBlade = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND }
@@ -306,6 +378,24 @@ class GrassFieldLandscape : PaintedLandscape() {
 class SnowyPeaksLandscape : PaintedLandscape() {
     override val layers = arrayOf(PaintLayer(0.25f, 0.8f, 0.08f), PaintLayer(0.4f, 0.92f, 0.45f), PaintLayer(0.66f, 1f, 1f))
 
+    private var slots: List<GroundSlot> = emptyList()
+    private var slotsFor = 0
+    override fun groundSlots(): List<GroundSlot> {
+        if (slotsFor != width * 31 + height) {
+            slotsFor = width * 31 + height
+            slots = makeSlots(width.toFloat(), height.toFloat())
+        }
+        return slots
+    }
+
+    private fun makeSlots(w: Float, h: Float): List<GroundSlot> {
+        val r = Ridge(width, h * 0.9f, h * 0.035f, false, 17)
+        return listOf(
+            GroundSlot(Species.GOAT, 0.2f, 0.8f, GroundY { x -> r.yAt(x) + h * 0.025f }, 1.1f, 2),
+            GroundSlot(Species.HARE, 0.3f, 0.7f, GroundY { x -> r.yAt(x) + h * 0.04f }, 1f, 1),
+        )
+    }
+
     override fun paintAll(k: PaintKit) = PaintResult(arrayOf(far(k), mid(k), near(k)))
 
     private fun far(k: PaintKit): Bitmap? {
@@ -361,6 +451,25 @@ class SnowyPeaksLandscape : PaintedLandscape() {
 /** Farmland with a small village: houses with lit windows after dark, a church, trees and fences. */
 class VillageLandscape : PaintedLandscape() {
     override val layers = arrayOf(PaintLayer(0.5f, 0.86f, 0.1f), PaintLayer(0.62f, 0.96f, 0.55f), PaintLayer(0.8f, 1f, 1f))
+
+    private var slots: List<GroundSlot> = emptyList()
+    private var slotsFor = 0
+    override fun groundSlots(): List<GroundSlot> {
+        if (slotsFor != width * 31 + height) {
+            slotsFor = width * 31 + height
+            slots = makeSlots(width.toFloat(), height.toFloat())
+        }
+        return slots
+    }
+
+    private fun makeSlots(w: Float, h: Float): List<GroundSlot> {
+        val r = Ridge(width, h * 0.9f, h * 0.02f, false, 21)
+        return listOf(
+            GroundSlot(Species.COW, 0.1f, 0.9f, GroundY { x -> r.yAt(x) + h * 0.045f }, 1.3f, 1),
+            GroundSlot(Species.SHEEP, 0.1f, 0.9f, GroundY { x -> r.yAt(x) + h * 0.05f }, 1.1f, 2),
+            GroundSlot(Species.DOG, 0.1f, 0.9f, GroundY { x -> r.yAt(x) + h * 0.055f }, 1.2f, 1),
+        )
+    }
 
     override fun paintAll(k: PaintKit) = PaintResult(arrayOf(far(k), mid(k), near(k)))
 

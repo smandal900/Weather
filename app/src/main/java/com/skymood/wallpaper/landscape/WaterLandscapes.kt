@@ -15,6 +15,9 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
 import kotlin.math.sin
+import com.skymood.wallpaper.fauna.GroundSlot
+import com.skymood.wallpaper.fauna.GroundY
+import com.skymood.wallpaper.fauna.Species
 import kotlin.random.Random
 
 private const val DEEP_SEA = 0xFF123E5C.toInt()
@@ -30,6 +33,20 @@ private fun shoreEdge(x: Float, w: Float, h: Float): Float =
 /** Sea washing onto a painted sandy beach with a leafy headland, wet sand, foam and a palm tree. */
 class BeachLandscape : PaintedLandscape() {
     override val layers = arrayOf(PaintLayer(0.5f, 0.68f, 0.1f), PaintLayer(0.78f, 1f, 1f))
+
+    private var slots: List<GroundSlot> = emptyList()
+    private var slotsFor = 0
+    override fun groundSlots(): List<GroundSlot> {
+        if (slotsFor != width * 31 + height) {
+            slotsFor = width * 31 + height
+            slots = makeSlots(width.toFloat(), height.toFloat())
+        }
+        return slots
+    }
+
+    private fun makeSlots(w: Float, h: Float): List<GroundSlot> {
+        return listOf(GroundSlot(Species.CRAB, 0.08f, 0.7f, GroundY { x -> shoreEdge(x, w, h) + h * 0.07f }, 1.2f, 3))
+    }
 
     private val water = Water()
     private val foamLines = FloatArray(FOAM_SEGMENTS * 4)
@@ -224,6 +241,20 @@ class BeachLandscape : PaintedLandscape() {
 class SeaLandscape(private val withBoat: Boolean) : PaintedLandscape() {
     override val layers = arrayOf(PaintLayer(0.52f, 0.68f, 0.08f))
 
+    private var slots: List<GroundSlot> = emptyList()
+    private var slotsFor = 0
+    override fun groundSlots(): List<GroundSlot> {
+        if (slotsFor != width * 31 + height) {
+            slotsFor = width * 31 + height
+            slots = makeSlots(width.toFloat(), height.toFloat())
+        }
+        return slots
+    }
+
+    private fun makeSlots(w: Float, h: Float): List<GroundSlot> {
+        return listOf(GroundSlot(Species.DOLPHIN, 0.15f, 0.85f, GroundY { _ -> h * 0.7f }, 1f, 1))
+    }
+
     private val water = Water(maxGlints = 64)
     private val swellLines = FloatArray(SWELL_SEGMENTS * 4)
     private val swellPaint = stroke()
@@ -391,6 +422,20 @@ class SeaLandscape(private val withBoat: Boolean) : PaintedLandscape() {
 class LakeLandscape : PaintedLandscape() {
     override val layers = arrayOf(PaintLayer(0.42f, 0.66f, 0.05f), PaintLayer(0.82f, 1f, 1f))
 
+    private var slots: List<GroundSlot> = emptyList()
+    private var slotsFor = 0
+    override fun groundSlots(): List<GroundSlot> {
+        if (slotsFor != width * 31 + height) {
+            slotsFor = width * 31 + height
+            slots = makeSlots(width.toFloat(), height.toFloat())
+        }
+        return slots
+    }
+
+    private fun makeSlots(w: Float, h: Float): List<GroundSlot> {
+        return listOf(GroundSlot(Species.DUCK, 0.15f, 0.85f, GroundY { _ -> h * 0.77f }, 1.3f, 3))
+    }
+
     private val water = Water()
     private val reeds = Path()
     private val reedPaint = stroke()
@@ -490,6 +535,20 @@ class LakeLandscape : PaintedLandscape() {
 /** A river winding out of the mountains through a green valley, between wooded slopes. */
 class RiverValleyLandscape : PaintedLandscape() {
     override val layers = arrayOf(PaintLayer(0.42f, 1f, 0.1f), PaintLayer(0.62f, 1f, 1f))
+
+    private var slots: List<GroundSlot> = emptyList()
+    private var slotsFor = 0
+    override fun groundSlots(): List<GroundSlot> {
+        if (slotsFor != width * 31 + height) {
+            slotsFor = width * 31 + height
+            slots = makeSlots(width.toFloat(), height.toFloat())
+        }
+        return slots
+    }
+
+    private fun makeSlots(w: Float, h: Float): List<GroundSlot> {
+        return listOf(GroundSlot(Species.DUCK, 0.33f, 0.59f, GroundY { _ -> h * 0.95f }, 1.5f, 2))
+    }
 
     private val water = Water()
     private val river = Path()
@@ -597,6 +656,20 @@ class RiverValleyLandscape : PaintedLandscape() {
 /** A waterfall pouring between two textured cliffs into a misty pool. */
 class WaterfallLandscape : PaintedLandscape() {
     override val layers = arrayOf(PaintLayer(0.36f, 0.72f, 0.1f), PaintLayer(0.42f, 0.88f, 0.8f))
+
+    private var slots: List<GroundSlot> = emptyList()
+    private var slotsFor = 0
+    override fun groundSlots(): List<GroundSlot> {
+        if (slotsFor != width * 31 + height) {
+            slotsFor = width * 31 + height
+            slots = makeSlots(width.toFloat(), height.toFloat())
+        }
+        return slots
+    }
+
+    private fun makeSlots(w: Float, h: Float): List<GroundSlot> {
+        return listOf(GroundSlot(Species.DUCK, 0.2f, 0.8f, GroundY { _ -> h * 0.93f }, 1.3f, 2))
+    }
 
     private val pool = Water()
     private val fallPaint = Paint()

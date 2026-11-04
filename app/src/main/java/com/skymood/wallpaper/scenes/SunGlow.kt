@@ -1,10 +1,12 @@
 package com.skymood.wallpaper.scenes
 
+import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RadialGradient
+import android.graphics.RectF
 import android.graphics.Shader
 import kotlin.math.cos
 import kotlin.math.sin
@@ -21,6 +23,9 @@ class SunGlow {
     private val rimPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val rays = Path()
     private var radius = 1f
+    private var raySprite: Bitmap? = null
+    private val spritePaint = Paint(Paint.FILTER_BITMAP_FLAG)
+    private val spriteDst = RectF()
 
     fun setup(radius: Float, warm: Boolean) {
         this.radius = radius
@@ -48,6 +53,24 @@ class SunGlow {
             floatArrayOf(0.6f, 1f), Shader.TileMode.CLAMP,
         )
         buildRays()
+        bakeRays()
+    }
+
+    /** The rays are filled shapes with a gradient: draw them once into a half-size bitmap and rotate that. */
+    private fun bakeRays() {
+        raySprite?.recycle()
+        val len = radius * 11f
+        val size = (len * SPRITE_SCALE).toInt().coerceAtLeast(8)
+        val bmp = runCatching { Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888) }.getOrNull()
+        raySprite = bmp
+        bmp ?: return
+        val c = Canvas(bmp)
+        c.translate(size / 2f, size / 2f)
+        c.scale(SPRITE_SCALE, SPRITE_SCALE)
+        val keep = rayPaint.alpha
+        rayPaint.alpha = 255
+        c.drawPath(rays, rayPaint)
+        rayPaint.alpha = keep
     }
 
     /** Twelve thin wedges of uneven width around the centre. */
@@ -72,13 +95,17 @@ class SunGlow {
         rayPaint.alpha = a
         canvas.save()
         canvas.translate(cx, cy)
-        if (rays) {
+        val sprite = raySprite
+        if (rays && sprite != null) {
+            val len = radius * 11f
+            spritePaint.alpha = a
             canvas.save()
             canvas.rotate(timeMs / 1000f * 1.5f)
-            canvas.drawPath(this.rays, rayPaint)
+            spriteDst.set(-len, -len, len, len)
+            canvas.drawBitmap(sprite, null, spriteDst, spritePaint)
             canvas.rotate(-timeMs / 1000f * 2.6f + 15f)
             canvas.scale(0.7f, 0.7f)
-            canvas.drawPath(this.rays, rayPaint)
+            canvas.drawBitmap(sprite, null, spriteDst, spritePaint)
             canvas.restore()
         }
         val pulse = 1f + 0.04f * sin(timeMs / 1500f)
@@ -89,5 +116,9 @@ class SunGlow {
             canvas.drawCircle(0f, 0f, radius, corePaint)
         }
         canvas.restore()
+    }
+
+    private companion object {
+        const val SPRITE_SCALE = 0.5f
     }
 }

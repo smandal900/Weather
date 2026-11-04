@@ -54,6 +54,7 @@ class SkyWallpaperService : WallpaperService() {
         private var surfaceReady = false
         private var running = false
         private var lastFrameMs = 0L
+        private var lastSkyMs = 0L
         private var fpsCap = 30
         private var powerSave = false
 
@@ -96,7 +97,7 @@ class SkyWallpaperService : WallpaperService() {
 
         private fun applySpec() {
             val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
-            val spec = SceneSelector.select(weather, settings, hour)
+            val spec = SceneSelector.select(weather, settings, hour, System.currentTimeMillis())
             lastSpecColor = SkyGradient.blend(
                 SkyGradient.midColor(spec.type, spec.timeOfDay), Color.BLACK, 0.3f + spec.dim * 0.5f,
             )
@@ -173,6 +174,8 @@ class SkyWallpaperService : WallpaperService() {
             val start = SystemClock.uptimeMillis()
             val dt = (start - lastFrameMs).coerceIn(0L, 100L)
             lastFrameMs = start
+            // The sun and moon creep across the sky; refresh their positions about once a minute.
+            if (start - lastSkyMs > 60_000L) { lastSkyMs = start; applySpec() }
             director.update(dt)
             renderer.render(surfaceHolder)
             if (running) {

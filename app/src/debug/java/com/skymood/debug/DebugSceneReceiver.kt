@@ -23,6 +23,8 @@ class DebugSceneReceiver : BroadcastReceiver() {
         val weather = intent.getStringExtra("weather")
         val time = intent.getStringExtra("time")
         val landscape = intent.getStringExtra("landscape")
+        val phase = intent.getStringExtra("phase")
+        val wildlife = intent.getStringExtra("wildlife")
         val pending = goAsync()
         CoroutineScope(Dispatchers.IO).launch {
             try {
@@ -31,6 +33,8 @@ class DebugSceneReceiver : BroadcastReceiver() {
                     if (weather != null) out = out.copy(previewOverride = parse<SceneType>(weather))
                     if (time != null) out = out.copy(timeOverride = parse<TimeOfDay>(time))
                     if (landscape != null) parse<LandscapeType>(landscape)?.let { out = out.copy(landscape = it) }
+                    if (phase != null) out = out.copy(moonPhaseOverride = phase.toFloatOrNull())
+                    if (wildlife != null) out = out.copy(wildlife = wildlife != "off")
                     out
                 }
             } finally {

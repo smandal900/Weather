@@ -60,16 +60,10 @@ class ClearScene : BaseScene() {
         p.alpha = 0.15f + Random.nextFloat() * 0.35f
     }
 
-    private fun sunX() = when (dayTime) {
-        TimeOfDay.DAWN -> width * 0.25f
-        TimeOfDay.DUSK -> width * 0.75f
-        else -> width * 0.3f
-    }
+    private fun sunX() = width * skyState.sunX
 
-    private fun sunY() = when (dayTime) {
-        TimeOfDay.DAWN, TimeOfDay.DUSK -> height * 0.42f
-        else -> height * 0.34f
-    }
+    /** The sun never dips below the horizon line, which is hidden by the landscape anyway. */
+    private fun sunY() = height * skyState.sunY
 
     private fun rebuildShaders() {
         val warm = dayTime != TimeOfDay.DAY

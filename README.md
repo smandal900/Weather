@@ -78,7 +78,7 @@ adb shell am broadcast -n com.skymood/.debug.DebugSceneReceiver --es weather STO
 Use the enum names (`CLEAR`, `PARTLY_CLOUDY`, `OVERCAST`, `DRIZZLE`, `HEAVY_RAIN`, `STORM`,
 `FOG`, `SNOW`, `WINDY`, `HAZE`; `DAWN`, `DAY`, `DUSK`, `NIGHT`; `FOREST`, `MOUNTAIN`, `HILL`,
 `SEA_BEACH`, `OPEN_SEA`, `SEA_WITH_BOAT`, `GRASS_FIELD`, `LAKE`, `RIVER_VALLEY`, `WATERFALL`,
-`SNOWY_PEAKS`, `COUNTRYSIDE_VILLAGE`), or `auto` to clear an override. The receiver is only in the
+`SNOWY_PEAKS`, `COUNTRYSIDE_VILLAGE`), or `auto` to clear an override. Extras `--es phase 0.25` (moon phase, 0 new to 0.5 full, `none` to follow the calendar) and `--es wildlife off` are also accepted. The receiver is only in the
 debug build.
 The **Intensity** slider scales particle counts (for example rain goes from about 150 drops when
 light to about 600 when heavy), **Frame rate cap** chooses 15, 30 or 60 FPS, and **Show
@@ -158,6 +158,8 @@ Choices made where the spec left room:
 - **Light rain** (codes 61, 66, 80) uses the Drizzle scene; moderate and heavy rain use Heavy rain.
 - **Morning / Evening** are the dawn and dusk buckets: 05:00–07:59 and 17:00–20:59 in daylight.
 - **Landscape** defaults to Forest and is never chosen automatically.
+- **Sun and moon** follow the real date, time and your location (a standard low-precision astronomy formula, good to about a degree for the sun and a few degrees for the moon). The sun is placed by its azimuth and elevation looking south; the moon uses the calendar phase, drawn as new, crescent, quarter, gibbous or full, lit on the right while waxing and on the left while waning. Previews of a chosen time of day use typical positions instead.
+- **Birds and animals** depend on weather, time and landscape: swallows and eagles by day, gulls over the sea, a V of geese at dawn and dusk, bats and fireflies after dark, and deer, hares, cows, sheep, horses, goats, dogs, ducks, crabs and dolphins where they belong. Heavy rain and storms keep only ducks, snow keeps goats, hares and deer, and nothing appears when the Birds and animals switch is off. Flyers are drawn as batched line segments and animals as baked sprites, so it stays cheap.
 - **Painted landscapes:** every landscape is painted in detail into a few bitmaps on a background thread (conifers grown branch by branch from needle clusters, leafy trees from shaded clusters, faceted mountains with snow, textured rocks, grass, painted houses and cliffs). The bitmaps are repainted only when the size, time of day or weather changes; each frame only copies them and draws the moving parts (water, boat, foam, palm, waterfall, swaying grass). CPU use stays around 30-45% of one core, comparable to the simple style.
 - A GPU-shader version of the sea was tried and dropped because it used about twice the CPU (see the ealistic-sea-demo branch).
 - **Cross-fade** captures the old frame once into a reusable bitmap and fades it out, so changes

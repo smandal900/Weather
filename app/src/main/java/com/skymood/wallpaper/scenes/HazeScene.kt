@@ -76,8 +76,9 @@ class HazeScene : BaseScene() {
 
     override fun drawBackground(canvas: Canvas) {
         sky.draw(canvas, width, height, SceneType.HAZE, timeOfDay)
-        val cx = width * 0.3f + parallaxPx * 0.3f
-        val cy = height * if (timeOfDay == TimeOfDay.DAWN || timeOfDay == TimeOfDay.DUSK) 0.42f else 0.34f
+        val night0 = timeOfDay == TimeOfDay.NIGHT && skyState.moonVisible
+        val cx = width * (if (night0) skyState.moonX else skyState.sunX) + parallaxPx * 0.3f
+        val cy = height * (if (night0) skyState.moonY else skyState.sunY)
         canvas.save()
         canvas.translate(cx, cy)
         canvas.drawCircle(0f, 0f, radius * 5f, glowPaint)

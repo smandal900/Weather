@@ -33,6 +33,10 @@ data class Settings(
     /** Time-of-day preview override; null means Auto (follow the clock and is_day). */
     val timeOverride: TimeOfDay? = null,
     val landscape: LandscapeType = LandscapeType.FOREST,
+    /** Birds, bats, fireflies and animals that fit the weather, time and landscape. */
+    val wildlife: Boolean = true,
+    /** Forces the moon phase (0 new .. 0.5 full) for testing; null follows the calendar. */
+    val moonPhaseOverride: Float? = null,
     /** Multiplier applied to the weather intensity, 0.25..1.5. */
     val intensity: Float = 1f,
     /** 15, 30 or 60. */

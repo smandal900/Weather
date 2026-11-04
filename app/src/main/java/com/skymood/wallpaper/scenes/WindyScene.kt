@@ -60,6 +60,11 @@ class WindyScene : BaseScene() {
         gustPaint.color = if (timeOfDay == TimeOfDay.NIGHT) 0xFF9AA6C0.toInt() else Color.WHITE
     }
 
+    override fun setSky(state: com.skymood.domain.SkyState) {
+        super.setSky(state)
+        clouds.setSky(state)
+    }
+
     override fun setParallax(offset: Float) {
         super.setParallax(offset)
         clouds.setParallax(offset)

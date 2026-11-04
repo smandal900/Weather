@@ -39,6 +39,10 @@ class Lighting {
     var reflectionX = 0.3f
         private set
 
+    fun setSun(x: Float) {
+        reflectionX = x
+    }
+
     fun set(timeOfDay: TimeOfDay, weather: SceneType) {
         this.timeOfDay = timeOfDay
         this.weather = weather
@@ -137,14 +141,29 @@ abstract class Landscape {
         applyLighting()
     }
 
-    fun setConditions(timeOfDay: TimeOfDay, weather: SceneType, windKmh: Float) {
+    /** [sunX] is where the sun (or the moon at night) is across the screen, 0..1; it sets the light's side. */
+    fun setConditions(timeOfDay: TimeOfDay, weather: SceneType, windKmh: Float, sunX: Float = 0.3f) {
         this.windKmh = windKmh
-        if (timeOfDay != lighting.timeOfDay || weather != lighting.weather || !lightingSet) {
+        val sideFlipped = (sunX < 0.5f) != (lighting.reflectionX < 0.5f)
+        if (timeOfDay != lighting.timeOfDay || weather != lighting.weather || !lightingSet || sideFlipped) {
             lightingSet = true
             lighting.set(timeOfDay, weather)
+            lighting.setSun(sunX)
             if (built) applyLighting()
+        } else if (kotlin.math.abs(sunX - lighting.reflectionX) > 0.02f) {
+            lighting.setSun(sunX)
+            onSunMoved()
         }
     }
+
+    /** Called when the sun moved without changing the light's side, so no repaint is needed. */
+    protected open fun onSunMoved() {}
+
+    /** Where animals can walk or swim in this landscape. */
+    open fun groundSlots(): List<com.skymood.wallpaper.fauna.GroundSlot> = emptyList()
+
+    /** Colour that dims animals to the scene's light. */
+    fun wildlifeTint(): Int = lighting.shade(0xFFFFFFFF.toInt())
     private var lightingSet = false
 
     fun setParallax(offset: Float) {

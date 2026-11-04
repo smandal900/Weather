@@ -306,7 +306,7 @@ class CloudScene(
             val partly = cloudCover < 55
             val strength = if (partly) 1f else (1.2f - cloudCover / 100f).coerceIn(0.3f, 0.6f)
             sun.draw(
-                canvas, width * 0.3f + shift * 0.3f, height * 0.3f, timeMs, strength,
+                canvas, width * skyState.sunX + shift * 0.3f, height * skyState.sunY, timeMs, strength,
                 showCore = partly, rays = partly,
             )
         }

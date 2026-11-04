@@ -26,6 +26,12 @@ class ClearSkyScene : BaseScene() {
         night.setEnvironment(windKmh, cloudCover, timeOfDay)
     }
 
+    override fun setSky(state: com.skymood.domain.SkyState) {
+        super.setSky(state)
+        day.setSky(state)
+        night.setSky(state)
+    }
+
     override fun setParallax(offset: Float) {
         super.setParallax(offset)
         day.setParallax(offset)

@@ -41,6 +41,8 @@ abstract class PaintedLandscape : Landscape() {
 
     protected val margin: Float get() = width * 0.08f
 
+    override fun onSunMoved() = onLightingChanged()
+
     override fun build() {
         // Painting happens in applyLighting, which always follows build.
     }
