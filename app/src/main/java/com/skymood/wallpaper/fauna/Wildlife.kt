@@ -2,7 +2,6 @@ package com.skymood.wallpaper.fauna
 
 import android.graphics.Bitmap
 import android.graphics.Canvas
-import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffColorFilter
@@ -11,6 +10,8 @@ import com.skymood.domain.SceneSpec
 import com.skymood.domain.SceneType
 import com.skymood.domain.TimeOfDay
 import kotlin.math.PI
+import kotlin.math.abs
+import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.random.Random
@@ -33,35 +34,38 @@ class GroundSlot(
 )
 
 /**
- * Birds, bats, fireflies and animals that fit the weather, time of day and landscape: swallows
- * and a V of geese by day and at dusk, gulls over the sea, eagles over mountains, bats and
- * fireflies at night, deer, cows, sheep, goats and ducks on the ground, crabs on the beach and
- * dolphins in the sea. Nothing is shown in storms or heavy rain, and snow keeps only hardy animals.
+ * Birds, bats, fireflies and animals that fit the weather, time of day and landscape.
  *
- * Flyers are batched into line segments, ground animals are baked sprites, and everything lives
- * in pre-sized arrays, so drawing does not allocate.
+ * Birds are feathered silhouettes that flap, glide and bank into their turns; four-legged
+ * animals have a real walk cycle (knees and hocks bend, feet lift and slide back), speed up and
+ * slow down smoothly, stop to graze with their heads down and turn around at the edge of their
+ * range. Heavy rain and storms keep only ducks, snow keeps hardy animals, and the night belongs
+ * to crabs, bats and fireflies.
+ *
+ * All sprites are baked bitmaps and all state lives in pre-sized arrays, so drawing does not
+ * allocate.
  */
 class Wildlife {
 
     private var w = 0f
     private var h = 0f
     private var unit = 1f
-    private var tint = Color.WHITE
     private var lastKey = -1
     private var parallaxPx = 0f
     private var time = 0f
 
     // ---- flyers: 0 small bird, 1 gull, 2 eagle, 3 goose, 4 bat
     private val fx = FloatArray(MAX_FLY); private val fy = FloatArray(MAX_FLY)
-    private val fvx = FloatArray(MAX_FLY); private val fph = FloatArray(MAX_FLY)
-    private val fsize = FloatArray(MAX_FLY); private val fa1 = FloatArray(MAX_FLY); private val fa2 = FloatArray(MAX_FLY)
+    private val fvx = FloatArray(MAX_FLY); private val fvy = FloatArray(MAX_FLY)
+    private val fph = FloatArray(MAX_FLY); private val fsize = FloatArray(MAX_FLY)
+    private val fa1 = FloatArray(MAX_FLY); private val fa2 = FloatArray(MAX_FLY)
+    private val ftimer = FloatArray(MAX_FLY)
     private val fkind = IntArray(MAX_FLY); private val fon = BooleanArray(MAX_FLY)
+    private val fglide = BooleanArray(MAX_FLY)
     private val target = IntArray(5)
     private var gooseDelay = 4f
     private var gooseDay = false
-
-    private val lineBuf = Array(5) { FloatArray(MAX_FLY * 16) }
-    private val linePaint = Array(5) { Paint(Paint.ANTI_ALIAS_FLAG).apply { strokeCap = Paint.Cap.ROUND; style = Paint.Style.STROKE } }
+    private val birdFrames = Array(5) { arrayOfNulls<Bitmap>(BirdSprites.GLIDE_FRAME + 1) }
 
     // ---- fireflies
     private val ffx = FloatArray(MAX_FF); private val ffy = FloatArray(MAX_FF)
@@ -73,7 +77,8 @@ class Wildlife {
     private var slots: List<GroundSlot> = emptyList()
     private val gSlot = IntArray(MAX_GROUND); private val gx = FloatArray(MAX_GROUND)
     private val gdir = FloatArray(MAX_GROUND); private val gtimer = FloatArray(MAX_GROUND)
-    private val gwalk = BooleanArray(MAX_GROUND); private val gph = FloatArray(MAX_GROUND)
+    private val gwalk = BooleanArray(MAX_GROUND); private val ggraze = BooleanArray(MAX_GROUND)
+    private val gph = FloatArray(MAX_GROUND); private val gv = FloatArray(MAX_GROUND)
     private val gu = FloatArray(MAX_GROUND); private val gstart = FloatArray(MAX_GROUND)
     private var groundCount = 0
     private val sprites = HashMap<Int, Bitmap>()
@@ -85,8 +90,8 @@ class Wildlife {
         w = width.toFloat(); h = height.toFloat(); unit = w / 1080f
         sprites.values.forEach { it.recycle() }
         sprites.clear()
+        for (kind in birdFrames) for (i in kind.indices) { kind[i]?.recycle(); kind[i] = null }
         lastKey = -1
-        for (i in linePaint.indices) linePaint[i].strokeWidth = STROKE[i] * unit
     }
 
     fun setParallax(offset: Float) {
@@ -96,14 +101,7 @@ class Wildlife {
     /** Re-evaluates what lives here; cheap when nothing relevant changed. */
     fun configure(spec: SceneSpec, groundSlots: List<GroundSlot>, tintColor: Int) {
         if (w <= 0f) return
-        tint = tintColor
         spritePaint.colorFilter = PorterDuffColorFilter(tintColor, PorterDuff.Mode.MULTIPLY)
-        val night = spec.timeOfDay == TimeOfDay.NIGHT
-        linePaint[0].color = mul(0xFF2B2F38.toInt(), tintColor)
-        linePaint[1].color = mul(0xFFF4F4F4.toInt(), tintColor)
-        linePaint[2].color = mul(0xFF3A2E24.toInt(), tintColor)
-        linePaint[3].color = mul(0xFF2B2F38.toInt(), tintColor)
-        linePaint[4].color = if (night) 0xFF0B0D12.toInt() else mul(0xFF1A1A20.toInt(), tintColor)
         val key = ((spec.landscape.ordinal * 8 + spec.timeOfDay.ordinal) * 16 + spec.type.ordinal) * 2 + if (spec.wildlife) 1 else 0
         if (key == lastKey) { slots = groundSlots; return }
         lastKey = key
@@ -140,7 +138,6 @@ class Wildlife {
             ls == LandscapeType.WATERFALL
         if ((night || tod == TimeOfDay.DUSK) && (fair || dull) && glowLand) fireflies = if (night) 26 else 10
 
-        // Spawn flyers to their targets.
         var n = 0
         for (kind in 0..4) {
             if (kind == 3) continue
@@ -152,7 +149,6 @@ class Wildlife {
             ffph[i] = rnd.nextFloat() * 6.28f; ffsp[i] = 0.6f + rnd.nextFloat() * 1.2f
         }
 
-        // Ground animals.
         for ((si, slot) in slots.withIndex()) {
             val sp = slot.species
             val allowed = when {
@@ -169,45 +165,47 @@ class Wildlife {
                 gSlot[g] = si
                 gx[g] = (slot.x0 + rnd.nextFloat() * (slot.x1 - slot.x0)) * w
                 gdir[g] = if (rnd.nextBoolean()) 1f else -1f
-                gwalk[g] = rnd.nextBoolean()
+                gwalk[g] = rnd.nextFloat() < 0.4f
+                ggraze[g] = !gwalk[g] && rnd.nextFloat() < 0.75f
                 gtimer[g] = 1f + rnd.nextFloat() * 5f
                 gph[g] = rnd.nextFloat() * 4f
+                gv[g] = 0f
                 gu[g] = -1f
             }
         }
     }
 
-    private fun mul(a: Int, b: Int) = Color.rgb(
-        Color.red(a) * Color.red(b) / 255, Color.green(a) * Color.green(b) / 255, Color.blue(a) * Color.blue(b) / 255,
-    )
-
     private fun spawn(i: Int, kind: Int, anywhere: Boolean) {
         fon[i] = true
         fkind[i] = kind
         fph[i] = rnd.nextFloat() * 6.28f
+        fglide[i] = false
+        ftimer[i] = 0.3f + rnd.nextFloat()
+        fvy[i] = 0f
         when (kind) {
             0 -> {
-                fsize[i] = (11f + rnd.nextFloat() * 5f) * unit
-                fvx[i] = (24f + rnd.nextFloat() * 22f) * unit
+                fsize[i] = (20f + rnd.nextFloat() * 8f) * unit
+                fvx[i] = (26f + rnd.nextFloat() * 22f) * unit
                 fx[i] = if (anywhere) rnd.nextFloat() * w else -20f * unit
                 fa1[i] = h * (0.1f + rnd.nextFloat() * 0.34f)
             }
             1 -> {
-                fsize[i] = (16f + rnd.nextFloat() * 6f) * unit
+                fsize[i] = (30f + rnd.nextFloat() * 8f) * unit
                 fvx[i] = (28f + rnd.nextFloat() * 30f) * unit * (if (rnd.nextBoolean()) 1f else -1f)
                 fx[i] = if (anywhere) rnd.nextFloat() * w else if (fvx[i] > 0f) -30f * unit else w + 30f * unit
                 fa1[i] = h * (0.33f + rnd.nextFloat() * 0.22f)
             }
             2 -> {
-                fsize[i] = (34f + rnd.nextFloat() * 10f) * unit
+                fsize[i] = (64f + rnd.nextFloat() * 16f) * unit
                 fa1[i] = w * (0.25f + rnd.nextFloat() * 0.5f)
                 fa2[i] = h * (0.1f + rnd.nextFloat() * 0.2f)
-                fvx[i] = w * (0.12f + rnd.nextFloat() * 0.1f) // orbit radius
-                fx[i] = rnd.nextFloat() * 6.28f // angle
-                fy[i] = if (rnd.nextBoolean()) 1f else -1f // direction
+                fvx[i] = w * (0.12f + rnd.nextFloat() * 0.1f)
+                fx[i] = rnd.nextFloat() * 6.28f
+                fy[i] = if (rnd.nextBoolean()) 1f else -1f
+                fglide[i] = true
             }
             4 -> {
-                fsize[i] = (12f + rnd.nextFloat() * 4f) * unit
+                fsize[i] = (24f + rnd.nextFloat() * 6f) * unit
                 fvx[i] = (35f + rnd.nextFloat() * 30f) * unit
                 fx[i] = if (anywhere) rnd.nextFloat() * w else -20f * unit
                 fa1[i] = h * (0.18f + rnd.nextFloat() * 0.35f)
@@ -219,25 +217,26 @@ class Wildlife {
     fun update(dtMs: Long) {
         if (w <= 0f) return
         val dt = dtMs / 1000f
+        if (dt <= 0f) return
         time += dt
         for (i in 0 until MAX_FLY) {
             if (!fon[i]) continue
+            val oldY = fy[i]
             when (fkind[i]) {
                 0 -> {
                     fx[i] += fvx[i] * dt
-                    fph[i] += dt * 14f
-                    fy[i] = fa1[i] + sin(time * 1.3f + i) * h * 0.012f
-                    if (fx[i] > w + 30f * unit) { spawn(i, 0, false) }
+                    flapOrGlide(i, dt, 16f, 0.45f, 1.1f, 0.2f, 0.6f)
+                    fy[i] = fa1[i] + sin(time * 1.3f + i) * h * 0.012f - (if (fglide[i]) 0f else 0f)
+                    if (fx[i] > w + 30f * unit) spawn(i, 0, false)
                 }
                 1 -> {
                     fx[i] += fvx[i] * dt
-                    fph[i] += dt * 4.5f
-                    fy[i] = fa1[i] + sin(time * 0.9f + i * 2f) * h * 0.02f
+                    flapOrGlide(i, dt, 6f, 1f, 2.2f, 2f, 5f)
+                    fy[i] = fa1[i] + sin(time * 0.6f + i * 2f) * h * 0.022f
                     if (fx[i] > w + 40f * unit || fx[i] < -40f * unit) spawn(i, 1, false)
                 }
                 2 -> {
-                    fx[i] += fy[i] * dt * 0.3f // angle grows (fx holds the angle)
-                    fph[i] += dt * 1.2f
+                    fx[i] += fy[i] * dt * 0.28f
                 }
                 3 -> {
                     fx[i] += fvx[i] * dt
@@ -245,17 +244,18 @@ class Wildlife {
                     if (fx[i] > w + 40f * unit) fon[i] = false
                 }
                 4 -> {
-                    fph[i] += dt * 22f
+                    fph[i] += dt * 20f
                     val steer = cos(time * 0.8f + i)
-                    fx[i] += fvx[i] * steer * dt
+                    fvx[i] = (if (steer >= 0f) 1f else -1f) * abs(fvx[i])
+                    fx[i] += fvx[i] * abs(steer).coerceAtLeast(0.3f) * dt
                     fa1[i] += sin(time * 1.7f + i * 3f) * h * 0.05f * dt
                     fy[i] = fa1[i]
                     if (fx[i] > w + 30f * unit) fx[i] = -20f * unit
                     if (fx[i] < -30f * unit) fx[i] = w + 20f * unit
                 }
             }
+            if (fkind[i] != 2) fvy[i] = (fy[i] - oldY) / dt
         }
-        // Geese cross as a V now and then.
         if (gooseDay) {
             var active = false
             for (i in 0 until MAX_FLY) if (fon[i] && fkind[i] == 3) { active = true; break }
@@ -267,22 +267,32 @@ class Wildlife {
         updateGround(dt)
     }
 
+    /** Birds alternate bursts of flapping with glides. */
+    private fun flapOrGlide(i: Int, dt: Float, flapRate: Float, flapMin: Float, flapMax: Float, glideMin: Float, glideMax: Float) {
+        ftimer[i] -= dt
+        if (ftimer[i] <= 0f) {
+            fglide[i] = !fglide[i]
+            ftimer[i] = if (fglide[i]) glideMin + rnd.nextFloat() * (glideMax - glideMin) else flapMin + rnd.nextFloat() * (flapMax - flapMin)
+        }
+        if (!fglide[i]) fph[i] += dt * flapRate
+    }
+
     private fun spawnGeese() {
         val baseY = h * (0.1f + rnd.nextFloat() * 0.2f)
         val speed = (36f + rnd.nextFloat() * 10f) * unit
-        val ordered = intArrayOf(0, 1, 2, 3, 4, 5, 6)
         var placed = 0
         for (i in 0 until MAX_FLY) {
-            if (placed >= ordered.size) break
+            if (placed >= 7) break
             if (fon[i]) continue
             val k = (placed + 1) / 2
             val side = if (placed % 2 == 0) 1f else -1f
-            fon[i] = true; fkind[i] = 3
-            fsize[i] = (14f + rnd.nextFloat() * 4f) * unit
+            fon[i] = true; fkind[i] = 3; fglide[i] = false
+            fsize[i] = (28f + rnd.nextFloat() * 5f) * unit
             fvx[i] = speed
             fx[i] = -30f * unit - k * w * 0.035f
             fy[i] = baseY + side * k * h * 0.016f
-            fph[i] = rnd.nextFloat() * 6.28f
+            fph[i] = placed * 0.5f + rnd.nextFloat() * 0.4f
+            fvy[i] = 0f
             placed++
         }
     }
@@ -311,19 +321,20 @@ class Wildlife {
                     if (gx[g] < x0) gdir[g] = 1f else if (gx[g] > x1) gdir[g] = -1f
                 }
                 Species.CRAB -> {
-                    if (gtimer[g] <= 0f) { gwalk[g] = !gwalk[g]; gtimer[g] = if (gwalk[g]) 0.4f + rnd.nextFloat() else 0.6f + rnd.nextFloat() * 2f; if (gwalk[g] && rnd.nextFloat() < 0.4f) gdir[g] = -gdir[g] }
+                    if (gtimer[g] <= 0f) {
+                        gwalk[g] = !gwalk[g]
+                        gtimer[g] = if (gwalk[g]) 0.4f + rnd.nextFloat() else 0.6f + rnd.nextFloat() * 2f
+                        if (gwalk[g] && rnd.nextFloat() < 0.4f) gdir[g] = -gdir[g]
+                    }
                     if (gwalk[g]) { gx[g] += gdir[g] * 40f * unit * dt; gph[g] += dt * 9f }
                     if (gx[g] < x0) gdir[g] = 1f else if (gx[g] > x1) gdir[g] = -1f
                 }
-                else -> {
-                    if (gtimer[g] <= 0f) { gwalk[g] = !gwalk[g]; gtimer[g] = if (gwalk[g]) 3f + rnd.nextFloat() * 5f else 1.5f + rnd.nextFloat() * 5f }
-                    if (gwalk[g]) {
-                        val v = (if (slot.species == Species.SHEEP) 8f else if (slot.species == Species.HARE) 22f else 14f) * unit * slot.scale
-                        gx[g] += gdir[g] * v * dt
-                        gph[g] += dt * (if (slot.species == Species.HARE) 5f else 3.2f)
-                    }
+                Species.HARE -> {
+                    if (gtimer[g] <= 0f) { gwalk[g] = !gwalk[g]; gtimer[g] = if (gwalk[g]) 1f + rnd.nextFloat() * 2f else 2f + rnd.nextFloat() * 5f }
+                    if (gwalk[g]) { gx[g] += gdir[g] * 26f * unit * slot.scale * dt; gph[g] += dt * 5f }
                     if (gx[g] < x0) gdir[g] = 1f else if (gx[g] > x1) gdir[g] = -1f
                 }
+                else -> walkQuadruped(g, slot, dt, x0, x1)
             }
         }
         for (i in 0 until fireflies) {
@@ -332,45 +343,68 @@ class Wildlife {
         }
     }
 
+    /** Walk, stop and graze, with smooth speed changes and a turn at each end of the range. */
+    private fun walkQuadruped(g: Int, slot: GroundSlot, dt: Float, x0: Float, x1: Float) {
+        val sp = slot.species
+        if (gtimer[g] <= 0f) {
+            gwalk[g] = !gwalk[g]
+            if (gwalk[g]) { gtimer[g] = 3f + rnd.nextFloat() * 5f; ggraze[g] = false }
+            else { gtimer[g] = 2.5f + rnd.nextFloat() * 6f; ggraze[g] = rnd.nextFloat() < 0.75f }
+        }
+        val heightPx = sp.heightFraction * h * slot.scale
+        val vmax = heightPx * (if (sp == Species.SHEEP) 0.2f else if (sp == Species.DEER || sp == Species.HORSE) 0.42f else 0.3f)
+        val target = if (gwalk[g]) vmax else 0f
+        val accel = if (target > gv[g]) heightPx * 0.5f else heightPx * 1.2f
+        gv[g] += (target - gv[g]).coerceIn(-accel * dt, accel * dt)
+        gx[g] += gdir[g] * gv[g] * dt
+        if (gv[g] > 0.5f) {
+            // Stride length is about a fifth of the animal's height; a cycle covers one stance at 60%.
+            val stride = heightPx * 0.2f
+            gph[g] += (0.6f * gv[g] / stride) * dt
+        }
+        if ((gx[g] < x0 && gdir[g] < 0f) || (gx[g] > x1 && gdir[g] > 0f)) {
+            gdir[g] = -gdir[g]
+            gwalk[g] = false; gtimer[g] = 1f + rnd.nextFloat() * 2f; ggraze[g] = rnd.nextBoolean()
+        }
+    }
+
     // ---------------------------------------------------------------- drawing
 
     /** Birds and bats, drawn between the sky and the landscape. */
     fun drawSky(canvas: Canvas) {
         if (w <= 0f) return
-        var n0 = 0; var n1 = 0; var n2 = 0; var n3 = 0; var n4 = 0
         for (i in 0 until MAX_FLY) {
             if (!fon[i]) continue
-            when (fkind[i]) {
-                0 -> n0 = wings(lineBuf[0], n0, fx[i] + parallaxPx * 0.2f, fy[i], fsize[i], sin(fph[i]))
-                1 -> n1 = wings(lineBuf[1], n1, fx[i] + parallaxPx * 0.2f, fy[i], fsize[i], sin(fph[i]) * 0.6f)
-                2 -> {
-                    val a = fx[i]
-                    val cx = fa1[i] + cos(a) * fvx[i]
-                    val cy = fa2[i] + sin(a) * fvx[i] * 0.22f
-                    n2 = wings(lineBuf[2], n2, cx + parallaxPx * 0.2f, cy, fsize[i], sin(fph[i]) * 0.18f)
-                }
-                3 -> n3 = wings(lineBuf[3], n3, fx[i] + parallaxPx * 0.2f, fy[i], fsize[i], sin(fph[i]))
-                4 -> n4 = wings(lineBuf[4], n4, fx[i] + parallaxPx * 0.2f, fy[i], fsize[i], sin(fph[i]))
+            val kind = fkind[i]
+            var x = fx[i]; var y = fy[i]
+            var vx = fvx[i]; var vy = fvy[i]
+            if (kind == 2) {
+                val a = fx[i]
+                x = fa1[i] + cos(a) * fvx[i]
+                y = fa2[i] + sin(a) * fvx[i] * 0.22f
+                vx = -sin(a) * fy[i]
+                vy = cos(a) * 0.22f * fy[i]
             }
+            val frame = if (fglide[i]) BirdSprites.GLIDE_FRAME
+            else (((fph[i] / (2f * PI.toFloat())) % 1f + 1f) % 1f * BirdSprites.FLAP_FRAMES).toInt().coerceIn(0, BirdSprites.FLAP_FRAMES - 1)
+            val bmp = birdFrame(kind, frame) ?: continue
+            val dir = if (vx >= 0f) 1f else -1f
+            val tilt = Math.toDegrees(atan2(vy.toDouble(), abs(vx).toDouble().coerceAtLeast(1.0))).toFloat().coerceIn(-28f, 28f)
+            val k = fsize[i] / (BirdSprites.WING[kind] * BirdSprites.SC)
+            canvas.save()
+            canvas.translate(x + parallaxPx * 0.2f, y)
+            canvas.rotate(tilt * dir * (if (kind == 2) 0.5f else 1f) + (if (kind == 2) -dir * 9f else 0f))
+            canvas.scale(dir * k, k)
+            canvas.drawBitmap(bmp, -62f * BirdSprites.SC, -52f * BirdSprites.SC, spritePaint)
+            canvas.restore()
         }
-        if (n0 > 0) canvas.drawLines(lineBuf[0], 0, n0, linePaint[0])
-        if (n1 > 0) canvas.drawLines(lineBuf[1], 0, n1, linePaint[1])
-        if (n2 > 0) canvas.drawLines(lineBuf[2], 0, n2, linePaint[2])
-        if (n3 > 0) canvas.drawLines(lineBuf[3], 0, n3, linePaint[3])
-        if (n4 > 0) canvas.drawLines(lineBuf[4], 0, n4, linePaint[4])
     }
 
-    /** One bird as an M of four line segments. [flap] -1 (wings down) .. 1 (wings up). */
-    private fun wings(buf: FloatArray, start: Int, x: Float, y: Float, s: Float, flap: Float): Int {
-        var n = start
-        val ex = s * 0.5f
-        val ey = -s * (0.25f + 0.1f * flap)
-        val ty = -flap * s * 0.5f + s * 0.12f
-        buf[n++] = x; buf[n++] = y; buf[n++] = x - ex; buf[n++] = y + ey
-        buf[n++] = x - ex; buf[n++] = y + ey; buf[n++] = x - s; buf[n++] = y + ty
-        buf[n++] = x; buf[n++] = y; buf[n++] = x + ex; buf[n++] = y + ey
-        buf[n++] = x + ex; buf[n++] = y + ey; buf[n++] = x + s; buf[n++] = y + ty
-        return n
+    private fun birdFrame(kind: Int, frame: Int): Bitmap? {
+        birdFrames[kind][frame]?.let { return it }
+        val bmp = BirdSprites.bake(kind, frame) ?: return null
+        birdFrames[kind][frame] = bmp
+        return bmp
     }
 
     /** Animals, fireflies and swimmers, drawn on top of the landscape. */
@@ -396,9 +430,14 @@ class Wildlife {
                 canvas.restore()
                 continue
             }
-            val walking = gwalk[g] && sp != Species.DUCK
-            val frame = if (walking && ((gph[g] * 2f).toInt() and 1) == 1) 1 else 0
-            val bmp = sprite(sp, if (sp == Species.DUCK) 0 else frame) ?: continue
+            val frame = when {
+                AnimalSprites.isQuadruped(sp) ->
+                    if (gv[g] < 0.5f && ggraze[g]) Quadruped.GRAZE_FRAME
+                    else (((gph[g] % 1f) + 1f) % 1f * Quadruped.WALK_FRAMES).toInt().coerceIn(0, Quadruped.WALK_FRAMES - 1)
+                sp == Species.DUCK -> 0
+                else -> if (gwalk[g] && ((gph[g] * 2f).toInt() and 1) == 1) 1 else 0
+            }
+            val bmp = sprite(sp, frame) ?: continue
             var y = slot.y.at(gx[g])
             if (sp == Species.DUCK) y += sin(gph[g] * 2.2f) * h * 0.0012f
             canvas.save()
@@ -420,7 +459,7 @@ class Wildlife {
     }
 
     private fun sprite(sp: Species, frame: Int): Bitmap? {
-        val key = sp.ordinal * 2 + frame
+        val key = sp.ordinal * 16 + frame
         sprites[key]?.let { return it }
         val px = (sp.heightFraction * h * BAKE_SCALE).toInt()
         val bmp = AnimalSprites.bake(sp, frame, px) ?: return null
@@ -433,6 +472,5 @@ class Wildlife {
         const val MAX_GROUND = 14
         const val MAX_FF = 30
         const val BAKE_SCALE = 1.5f
-        val STROKE = floatArrayOf(2.4f, 3f, 4f, 2.6f, 3f)
     }
 }

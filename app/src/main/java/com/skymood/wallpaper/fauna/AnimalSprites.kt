@@ -13,13 +13,13 @@ enum class Species(
     /** Width over height of its sprite. */
     val aspect: Float,
 ) {
-    DEER(0.05f, 1.5f),
-    COW(0.042f, 1.45f),
-    SHEEP(0.03f, 1.15f),
-    HORSE(0.055f, 1.5f),
-    GOAT(0.034f, 1.3f),
+    DEER(0.05f, 1.2f),
+    COW(0.042f, 1.25f),
+    SHEEP(0.03f, 1.0f),
+    HORSE(0.055f, 1.3f),
+    GOAT(0.034f, 0.9f),
     HARE(0.017f, 1.3f),
-    DOG(0.026f, 1.4f),
+    DOG(0.026f, 0.95f),
     CRAB(0.013f, 1.5f),
     DUCK(0.016f, 1.7f),
     DOLPHIN(0.032f, 2.0f),
@@ -32,6 +32,19 @@ enum class Species(
  */
 object AnimalSprites {
 
+
+    /** Whether the species walks with a quadruped gait (frames 0-7 walking, 8 grazing). */
+    fun isQuadruped(s: Species) = s == Species.DEER || s == Species.COW || s == Species.SHEEP ||
+        s == Species.HORSE || s == Species.GOAT || s == Species.DOG
+
+    private fun spec(s: Species): QuadSpec = when (s) {
+        Species.DEER -> QuadSpec(56f, 22f, 20f, 24f, 26f, 62f, 15f, 8f, 0xFFA9784A.toInt(), 0xFFE0C9A6.toInt(), 0xFF7B5636.toInt(), 0xFF2A2018.toInt(), 8f, false, 3.2f, antlers = true, whiteTail = true)
+        Species.COW -> QuadSpec(62f, 32f, 15f, 16f, 18f, 18f, 17f, 12f, 0xFFF2EEE6.toInt(), 0xFFD8D2C8.toInt(), 0xFFE6E0D4.toInt(), 0xFF3A322A.toInt(), 26f, false, 4.6f, horns = 1, patches = true, udder = true)
+        Species.SHEEP -> QuadSpec(44f, 28f, 11f, 13f, 12f, 30f, 13f, 9f, 0xFFEFE9DC.toInt(), 0xFFEFE9DC.toInt(), 0xFF3A3430.toInt(), 0xFF1E1A18.toInt(), 6f, false, 3f, wool = true)
+        Species.HORSE -> QuadSpec(60f, 26f, 22f, 26f, 30f, 52f, 20f, 10f, 0xFF7B4E2E.toInt(), 0xFF9A6A44.toInt(), 0xFF5A3822.toInt(), 0xFF1E140C.toInt(), 30f, false, 3.6f, mane = true)
+        Species.GOAT -> QuadSpec(42f, 20f, 14f, 16f, 14f, 48f, 11f, 7f, 0xFFEAE2D2.toInt(), 0xFFD2C8B4.toInt(), 0xFF8C826E.toInt(), 0xFF2A2018.toInt(), 8f, true, 2.8f, horns = 2, beard = true)
+        else -> QuadSpec(42f, 18f, 15f, 15f, 12f, 38f, 13f, 8f, 0xFF9A6B3F.toInt(), 0xFFB88C5E.toInt(), 0xFF7A5230.toInt(), 0xFF2A2018.toInt(), 16f, true, 3.2f, floppyEars = true)
+    }
     fun bake(species: Species, frame: Int, heightPx: Int): Bitmap? {
         val wPx = (heightPx * species.aspect).toInt().coerceAtLeast(4)
         val bmp = runCatching { Bitmap.createBitmap(wPx, heightPx.coerceAtLeast(4), Bitmap.Config.ARGB_8888) }.getOrNull() ?: return null
@@ -40,13 +53,8 @@ object AnimalSprites {
         c.scale(s, s)
         val p = Painter(c)
         when (species) {
-            Species.DEER -> p.deer(frame)
-            Species.COW -> p.cow(frame)
-            Species.SHEEP -> p.sheep(frame)
-            Species.HORSE -> p.horse(frame)
-            Species.GOAT -> p.goat(frame)
+            Species.DEER, Species.COW, Species.SHEEP, Species.HORSE, Species.GOAT, Species.DOG -> return Quadruped.bake(spec(species), frame, heightPx, species.aspect)
             Species.HARE -> p.hare(frame)
-            Species.DOG -> p.dog(frame)
             Species.CRAB -> p.crab(frame)
             Species.DUCK -> p.duck()
             Species.DOLPHIN -> p.dolphin()
@@ -81,88 +89,6 @@ object AnimalSprites {
             (Color.red(c) * k).toInt(), (Color.green(c) * k).toInt(), (Color.blue(c) * k).toInt(),
         )
 
-        fun deer(frame: Int) {
-            val coat = 0xFFA9784A.toInt()
-            legs(60f, 98f, 48f, 3.6f, 0xFF6B4A2E.toInt(), frame)
-            oval(32f, 36f, 106f, 68f, coat)
-            oval(40f, 54f, 98f, 70f, 0xFFD8BC94.toInt())
-            // Neck and head.
-            path.rewind(); path.moveTo(96f, 46f); path.lineTo(112f, 18f); path.lineTo(122f, 22f); path.lineTo(108f, 58f); path.close()
-            fill.color = coat; c.drawPath(path, fill)
-            oval(112f, 12f, 138f, 28f, coat)
-            oval(128f, 17f, 142f, 26f, 0xFFD8BC94.toInt())
-            fill.color = 0xFF2A2018.toInt(); c.drawCircle(139f, 20f, 1.6f, fill)
-            path.rewind(); path.moveTo(114f, 14f); path.lineTo(110f, 4f); path.lineTo(120f, 12f); path.close()
-            fill.color = coat; c.drawPath(path, fill)
-            // Antlers.
-            line.color = 0xFF8A6A4A.toInt(); line.strokeWidth = 1.8f
-            c.drawLine(120f, 12f, 116f, -2f, line); c.drawLine(118f, 6f, 126f, 0f, line); c.drawLine(116f, -2f, 122f, -6f, line)
-            // Tail.
-            path.rewind(); path.moveTo(34f, 40f); path.lineTo(26f, 36f); path.lineTo(34f, 48f); path.close()
-            fill.color = 0xFFF2E8D8.toInt(); c.drawPath(path, fill)
-            fill.color = 0x33FFFFFF; c.drawCircle(60f, 46f, 2.2f, fill); c.drawCircle(72f, 44f, 2f, fill); c.drawCircle(84f, 47f, 2.2f, fill)
-        }
-
-        fun cow(frame: Int) {
-            val leg = 0xFFEDE8E0.toInt()
-            legs(64f, 104f, 40f, 5f, leg, frame, 7f)
-            oval(24f, 32f, 118f, 70f, 0xFFF4F0EA.toInt())
-            fill.color = 0xFF2A2A2E.toInt()
-            oval(38f, 36f, 62f, 56f, 0xFF2A2A2E.toInt()); oval(72f, 44f, 100f, 66f, 0xFF2A2A2E.toInt()); oval(52f, 54f, 66f, 68f, 0xFF2A2A2E.toInt())
-            oval(94f, 52f, 108f, 64f, 0xFFD9A3A3.toInt()) // udder side hint
-            r.set(112f, 38f, 140f, 62f); fill.color = 0xFFF4F0EA.toInt(); c.drawRoundRect(r, 8f, 8f, fill)
-            oval(128f, 50f, 142f, 62f, 0xFFE8B4B0.toInt())
-            oval(110f, 36f, 124f, 46f, 0xFF2A2A2E.toInt())
-            fill.color = 0xFF2A2018.toInt(); c.drawCircle(130f, 44f, 1.6f, fill)
-            line.color = 0xFFEDE0C0.toInt(); line.strokeWidth = 2.2f
-            c.drawLine(114f, 38f, 112f, 31f, line); c.drawLine(122f, 38f, 124f, 31f, line)
-            line.color = 0xFFD8D2C8.toInt(); line.strokeWidth = 2.4f
-            c.drawLine(24f, 42f, 14f, 66f, line)
-        }
-
-        fun sheep(frame: Int) {
-            legs(70f, 78f, 40f, 3f, 0xFF3A3430.toInt(), frame, 5f)
-            val wool = 0xFFF1ECE2.toInt()
-            for ((x, y, rr) in listOf(Triple(40f, 48f, 17f), Triple(58f, 42f, 19f), Triple(76f, 48f, 17f), Triple(50f, 58f, 17f), Triple(68f, 60f, 16f), Triple(32f, 60f, 13f))) {
-                fill.color = wool; c.drawCircle(x, y, rr, fill)
-                fill.color = 0x22000000; c.drawCircle(x + 3f, y + 4f, rr * 0.7f, fill)
-            }
-            oval(84f, 42f, 104f, 62f, 0xFF3A3430.toInt())
-            oval(82f, 40f, 90f, 48f, 0xFF2E2824.toInt())
-            fill.color = 0xFFF1ECE2.toInt(); c.drawCircle(95f, 42f, 2.6f, fill)
-        }
-
-        fun horse(frame: Int) {
-            val coat = 0xFF7B4E2E.toInt()
-            legs(62f, 104f, 40f, 4f, 0xFF4A2E1C.toInt(), frame, 10f)
-            oval(26f, 34f, 112f, 68f, coat)
-            path.rewind(); path.moveTo(98f, 44f); path.lineTo(112f, 12f); path.lineTo(126f, 18f); path.lineTo(112f, 60f); path.close()
-            fill.color = coat; c.drawPath(path, fill)
-            oval(114f, 8f, 146f, 28f, coat)
-            oval(136f, 16f, 148f, 28f, 0xFF5A3822.toInt())
-            fill.color = 0xFF1E140C.toInt(); c.drawCircle(136f, 14f, 1.8f, fill)
-            path.rewind(); path.moveTo(98f, 40f); path.quadTo(104f, 20f, 112f, 8f); path.lineTo(116f, 12f); path.quadTo(108f, 28f, 106f, 46f); path.close()
-            fill.color = 0xFF1E140C.toInt(); c.drawPath(path, fill)
-            path.rewind(); path.moveTo(28f, 40f); path.quadTo(8f, 50f, 14f, 82f); path.quadTo(24f, 60f, 32f, 54f); path.close()
-            c.drawPath(path, fill)
-        }
-
-        fun goat(frame: Int) {
-            val coat = 0xFFE9E1D2.toInt()
-            legs(62f, 96f, 44f, 3.2f, 0xFF8C826E.toInt(), frame, 6f)
-            oval(34f, 38f, 104f, 68f, coat)
-            oval(40f, 52f, 98f, 70f, 0xFFD4CABA.toInt())
-            path.rewind(); path.moveTo(92f, 46f); path.lineTo(108f, 28f); path.lineTo(118f, 34f); path.lineTo(104f, 60f); path.close()
-            fill.color = coat; c.drawPath(path, fill)
-            oval(106f, 22f, 130f, 40f, coat)
-            line.color = 0xFF5E5648.toInt(); line.strokeWidth = 2.4f
-            path.rewind(); path.moveTo(112f, 24f); path.quadTo(108f, 8f, 94f, 6f)
-            line.style = Paint.Style.STROKE; c.drawPath(path, line)
-            c.drawLine(122f, 40f, 124f, 52f, line) // beard
-            fill.color = 0xFF2A2018.toInt(); c.drawCircle(124f, 29f, 1.6f, fill)
-            c.drawLine(34f, 46f, 28f, 40f, line)
-        }
-
         fun hare(frame: Int) {
             val coat = 0xFFB9A58E.toInt()
             val stretch = if (frame == 0) 0f else 6f
@@ -176,19 +102,6 @@ object AnimalSprites {
             c.drawLine(94f, 40f - stretch * 0.4f, 91f, 16f, line)
             fill.color = 0xFFFFFFFF.toInt(); c.drawCircle(26f, 74f, 7f, fill)
             fill.color = 0xFF2A2018.toInt(); c.drawCircle(108f, 52f - stretch * 0.4f, 2f, fill)
-        }
-
-        fun dog(frame: Int) {
-            val coat = 0xFF9A6B3F.toInt()
-            legs(62f, 98f, 46f, 4f, 0xFF6B4A2A.toInt(), frame, 8f)
-            oval(34f, 40f, 106f, 70f, coat)
-            oval(98f, 28f, 128f, 54f, coat)
-            oval(118f, 38f, 138f, 52f, 0xFF7A5230.toInt())
-            path.rewind(); path.moveTo(104f, 30f); path.lineTo(100f, 14f); path.lineTo(112f, 28f); path.close()
-            fill.color = 0xFF6B4A2A.toInt(); c.drawPath(path, fill)
-            fill.color = 0xFF1E140C.toInt(); c.drawCircle(124f, 34f, 1.8f, fill); c.drawCircle(136f, 40f, 2.4f, fill)
-            line.color = coat; line.strokeWidth = 5f
-            c.drawLine(36f, 48f, 20f, 26f, line)
         }
 
         fun crab(frame: Int) {
