@@ -371,7 +371,7 @@ private fun AnimationCard(settings: Settings, onChange: ((Settings) -> Settings)
                 valueRange = 0.25f..1.5f,
             )
 
-            Text("Dim for readability: {(dimLevel * 100).roundToInt()}%", style = MaterialTheme.typography.labelLarge)
+            Text("Dim for readability: ${(dimLevel * 100).roundToInt()}%", style = MaterialTheme.typography.labelLarge)
             Slider(
                 value = dimLevel,
                 onValueChange = { dimLevel = it },
