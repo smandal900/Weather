@@ -35,6 +35,8 @@ data class Settings(
     val landscape: LandscapeType = LandscapeType.FOREST,
     /** Birds, bats, fireflies and animals that fit the weather, time and landscape. */
     val wildlife: Boolean = true,
+    /** Pick a different landscape every time the phone locks, painted before it is unlocked. */
+    val changeOnLock: Boolean = true,
     /** Forces the moon phase (0 new .. 0.5 full) for testing; null follows the calendar. */
     val moonPhaseOverride: Float? = null,
     /** Multiplier applied to the weather intensity, 0.25..1.5. */

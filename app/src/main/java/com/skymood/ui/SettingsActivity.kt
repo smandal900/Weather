@@ -398,6 +398,14 @@ private fun AnimationCard(settings: Settings, onChange: ((Settings) -> Settings)
             )
 
             Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("New landscape every time the phone locks", modifier = Modifier.weight(1f))
+                Switch(
+                    checked = settings.changeOnLock,
+                    onCheckedChange = { on -> onChange { it.copy(changeOnLock = on) } },
+                )
+            }
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Birds and animals", modifier = Modifier.weight(1f))
                 Switch(
                     checked = settings.wildlife,

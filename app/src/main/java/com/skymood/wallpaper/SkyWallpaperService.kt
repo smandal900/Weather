@@ -15,6 +15,7 @@ import android.service.wallpaper.WallpaperService
 import android.view.SurfaceHolder
 import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
+import com.skymood.domain.LandscapeType
 import com.skymood.domain.SceneSelector
 import com.skymood.domain.SceneType
 import com.skymood.domain.Settings
@@ -55,6 +56,8 @@ class SkyWallpaperService : WallpaperService() {
         private var running = false
         private var lastFrameMs = 0L
         private var lastSkyMs = 0L
+        /** True from the moment the phone locks until the wallpaper is visible again. */
+        private var screenOff = false
         private var fpsCap = 30
         private var powerSave = false
 
@@ -66,6 +69,16 @@ class SkyWallpaperService : WallpaperService() {
 
         private val frame = object : Runnable {
             override fun run() = drawFrame()
+        }
+
+        /** On lock: choose the next landscape now, so it is fully painted before the phone is unlocked. */
+        private val screenReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                screenOff = true
+                if (!settings.changeOnLock) return
+                val next = LandscapeType.entries.filter { it != settings.landscape }.random()
+                scope.launch { skyMood.repository.updateSettings { it.copy(landscape = next) } }
+            }
         }
 
         private val powerReceiver = object : BroadcastReceiver() {
@@ -81,6 +94,11 @@ class SkyWallpaperService : WallpaperService() {
             ContextCompat.registerReceiver(
                 this@SkyWallpaperService, powerReceiver,
                 IntentFilter(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED),
+                ContextCompat.RECEIVER_NOT_EXPORTED,
+            )
+
+            ContextCompat.registerReceiver(
+                this@SkyWallpaperService, screenReceiver, IntentFilter(Intent.ACTION_SCREEN_OFF),
                 ContextCompat.RECEIVER_NOT_EXPORTED,
             )
 
@@ -102,7 +120,7 @@ class SkyWallpaperService : WallpaperService() {
                 SkyGradient.midColor(spec.type, spec.timeOfDay), Color.BLACK, 0.3f + spec.dim * 0.5f,
             )
             fpsCap = spec.fpsCap
-            director.apply(spec)
+            director.apply(spec, fade = visible && !screenOff)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1 && spec.type != lastColorsType) {
                 lastColorsType = spec.type
                 notifyColorsChanged()
@@ -119,7 +137,10 @@ class SkyWallpaperService : WallpaperService() {
 
         override fun onVisibilityChanged(visible: Boolean) {
             this.visible = visible
-            if (visible) applySpec() // picks up dawn/dusk changes since last shown
+            if (visible) {
+                applySpec() // picks up dawn/dusk changes since last shown
+                screenOff = false
+            }
             updateLoop()
         }
 
@@ -149,6 +170,7 @@ class SkyWallpaperService : WallpaperService() {
             handler.removeCallbacks(frame)
             scope.cancel()
             runCatching { unregisterReceiver(powerReceiver) }
+            runCatching { unregisterReceiver(screenReceiver) }
             renderer.release()
             super.onDestroy()
         }

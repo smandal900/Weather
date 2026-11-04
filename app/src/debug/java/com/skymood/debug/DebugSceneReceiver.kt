@@ -25,6 +25,7 @@ class DebugSceneReceiver : BroadcastReceiver() {
         val landscape = intent.getStringExtra("landscape")
         val phase = intent.getStringExtra("phase")
         val wildlife = intent.getStringExtra("wildlife")
+        val shuffle = intent.getStringExtra("shuffle")
         val pending = goAsync()
         CoroutineScope(Dispatchers.IO).launch {
             try {
@@ -35,6 +36,7 @@ class DebugSceneReceiver : BroadcastReceiver() {
                     if (landscape != null) parse<LandscapeType>(landscape)?.let { out = out.copy(landscape = it) }
                     if (phase != null) out = out.copy(moonPhaseOverride = phase.toFloatOrNull())
                     if (wildlife != null) out = out.copy(wildlife = wildlife != "off")
+                    if (shuffle != null) out = out.copy(changeOnLock = shuffle != "off")
                     out
                 }
             } finally {

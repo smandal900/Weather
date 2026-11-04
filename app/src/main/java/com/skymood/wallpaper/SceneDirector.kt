@@ -70,9 +70,10 @@ class SceneDirector(
     private val scrimPaint = Paint()
     private var dim = 0f
 
-    fun apply(spec: SceneSpec) {
+    /** [fade] false switches instantly, used while the screen is off so nothing changes after unlock. */
+    fun apply(spec: SceneSpec, fade: Boolean = true) {
         val newKey = (spec.type.ordinal * 8 + spec.timeOfDay.ordinal) * 16 + spec.landscape.ordinal
-        if (key != -1 && newKey != key && current != null) captureForFade()
+        if (fade && key != -1 && newKey != key && current != null) captureForFade() else if (!fade) fadeMs = 0f
         key = newKey
 
         val scene = sceneFor(spec.type)
