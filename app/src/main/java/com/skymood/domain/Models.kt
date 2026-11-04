@@ -35,6 +35,8 @@ data class Settings(
     /** 15, 30 or 60. */
     val fpsCap: Int = 30,
     val showTemperature: Boolean = false,
+    /** Darkening layer over the wallpaper so icons and text stay readable, 0..0.7. */
+    val dim: Float = 0.35f,
     /** When set, weather is fetched for this city instead of the device location. */
     val manualLocation: SavedLocation? = null,
 )

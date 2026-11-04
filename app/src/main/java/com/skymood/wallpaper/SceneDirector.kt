@@ -1,6 +1,8 @@
 package com.skymood.wallpaper
 
 import android.graphics.Canvas
+import android.graphics.LinearGradient
+import android.graphics.Shader
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Typeface
@@ -47,6 +49,13 @@ class SceneDirector(
     }
     private var tempText: String? = null
 
+    /**
+     * Readability scrim: black, strongest at the top (clock, widgets) and bottom (icons, dock)
+     * and lighter in the middle. Its overall strength is the user's dim setting.
+     */
+    private val scrimPaint = Paint()
+    private var dim = 0f
+
     fun apply(spec: SceneSpec) {
         this.spec = spec
         val scene = sceneFor(spec.type)
@@ -59,6 +68,8 @@ class SceneDirector(
             current = scene
             currentType = spec.type
         }
+        dim = spec.dim
+        scrimPaint.alpha = (255 * dim).toInt()
         tempText = if (spec.showTemperature && spec.temperatureC != null) {
             "${spec.temperatureC.roundToInt()}°"
         } else null
@@ -75,6 +86,15 @@ class SceneDirector(
         this.width = width
         this.height = height
         tempPaint.textSize = minOf(width, height) * 0.06f
+        if (height > 0) {
+            scrimPaint.shader = LinearGradient(
+                0f, 0f, 0f, height.toFloat(),
+                intArrayOf(Color.BLACK, Color.argb(150, 0, 0, 0), Color.argb(150, 0, 0, 0), Color.BLACK),
+                floatArrayOf(0f, 0.3f, 0.55f, 1f),
+                Shader.TileMode.CLAMP,
+            )
+            scrimPaint.alpha = (255 * dim).toInt()
+        }
         for (scene in scenes.values) scene.resize(width, height)
     }
 
@@ -105,6 +125,7 @@ class SceneDirector(
             old.draw(canvas)
             canvas.restoreToCount(save)
         }
+        if (dim > 0f) canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), scrimPaint)
         tempText?.let { canvas.drawText(it, width * 0.94f, height * 0.11f, tempPaint) }
     }
 

@@ -335,6 +335,7 @@ private fun LocationCard(
 private fun AnimationCard(settings: Settings, onChange: ((Settings) -> Settings) -> Unit) {
     var menuOpen by remember { mutableStateOf(false) }
     var intensity by remember(settings.intensity) { mutableFloatStateOf(settings.intensity) }
+    var dimLevel by remember(settings.dim) { mutableFloatStateOf(settings.dim) }
     var fpsIndex by remember(settings.fpsCap) {
         mutableIntStateOf(fpsSteps.indexOf(settings.fpsCap).coerceAtLeast(0))
     }
@@ -368,6 +369,18 @@ private fun AnimationCard(settings: Settings, onChange: ((Settings) -> Settings)
                 onValueChange = { intensity = it },
                 onValueChangeFinished = { onChange { s -> s.copy(intensity = intensity) } },
                 valueRange = 0.25f..1.5f,
+            )
+
+            Text("Dim for readability: {(dimLevel * 100).roundToInt()}%", style = MaterialTheme.typography.labelLarge)
+            Slider(
+                value = dimLevel,
+                onValueChange = { dimLevel = it },
+                onValueChangeFinished = { onChange { s -> s.copy(dim = dimLevel) } },
+                valueRange = 0f..0.7f,
+            )
+            Text(
+                "Darkens the wallpaper so app icons, labels and the clock stand out.",
+                style = MaterialTheme.typography.bodySmall,
             )
 
             Text("Frame rate cap: ${fpsSteps[fpsIndex]} FPS", style = MaterialTheme.typography.labelLarge)

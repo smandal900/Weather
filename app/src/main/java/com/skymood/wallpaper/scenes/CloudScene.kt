@@ -59,13 +59,13 @@ class CloudScene(
             dark && night -> 0xFF1E222A.toInt()
             dark -> 0xFF3C424C.toInt()
             night -> 0xFF3A4252.toInt()
-            warm -> 0xFFE8C9C0.toInt()
-            else -> 0xFFF4F6F8.toInt()
+            warm -> 0xFFCDB3AE.toInt()
+            else -> 0xFFD3DAE2.toInt()
         }
         for (l in 0 until LAYERS) {
             val p = paints[l]
             p.color = base
-            p.alpha = when (l) { 0 -> 235; 1 -> 190; else -> 140 } // 0 = nearest
+            p.alpha = when (l) { 0 -> 175; 1 -> 135; else -> 100 } // 0 = nearest; kept soft so icons stay readable
         }
     }
 

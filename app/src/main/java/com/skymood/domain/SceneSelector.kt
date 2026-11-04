@@ -26,6 +26,7 @@ data class SceneSpec(
     val temperatureC: Double?,
     val showTemperature: Boolean,
     val fpsCap: Int,
+    val dim: Float = 0f,
 )
 
 object SceneSelector {
@@ -57,6 +58,7 @@ object SceneSelector {
             temperatureC = weather?.temperatureC,
             showTemperature = settings.showTemperature,
             fpsCap = settings.fpsCap.coerceIn(15, 60),
+            dim = settings.dim.coerceIn(0f, 0.7f),
         )
     }
 }

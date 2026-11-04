@@ -4,19 +4,25 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.app.WallpaperColors
+import android.graphics.Color
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
 import android.os.SystemClock
 import android.service.wallpaper.WallpaperService
 import android.view.SurfaceHolder
+import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
 import com.skymood.domain.SceneSelector
+import com.skymood.domain.SceneType
 import com.skymood.domain.Settings
 import com.skymood.domain.WeatherState
 import com.skymood.skyMood
 import com.skymood.wallpaper.render.CanvasFrameRenderer
 import com.skymood.wallpaper.render.FrameRenderer
+import com.skymood.wallpaper.scenes.SkyGradient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -50,6 +56,9 @@ class SkyWallpaperService : WallpaperService() {
         private var lastFrameMs = 0L
         private var fpsCap = 30
         private var powerSave = false
+
+        private var lastColorsType: SceneType? = null
+        private var lastSpecColor = Color.BLACK
 
         private var weather: WeatherState? = null
         private var settings = Settings()
@@ -88,9 +97,24 @@ class SkyWallpaperService : WallpaperService() {
         private fun applySpec() {
             val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
             val spec = SceneSelector.select(weather, settings, hour)
+            lastSpecColor = SkyGradient.blend(
+                SkyGradient.midColor(spec.type, spec.timeOfDay), Color.BLACK, 0.3f + spec.dim * 0.5f,
+            )
             fpsCap = spec.fpsCap
             director.apply(spec)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1 && spec.type != lastColorsType) {
+                lastColorsType = spec.type
+                notifyColorsChanged()
+            }
         }
+
+        /**
+         * Tells the launcher and system UI the wallpaper is dark, so they keep light text and
+         * icons with shadows instead of switching to dark text over a bright sky.
+         */
+        @RequiresApi(Build.VERSION_CODES.O_MR1)
+        override fun onComputeColors(): WallpaperColors =
+            WallpaperColors(Color.valueOf(lastSpecColor), null, null)
 
         override fun onVisibilityChanged(visible: Boolean) {
             this.visible = visible

@@ -125,4 +125,5 @@ Choices made where the spec left room:
   when background location is not granted.
 - **Preview override intensity** is a fixed 70%, scaled by the intensity slider.
 - **Settings** and the cached weather are each stored as one JSON string in Preferences DataStore.
+- **Readability:** a dim layer (default 35%, adjustable under Animation) darkens the top and bottom of the wallpaper, clouds are semi-transparent, and the engine reports dark wallpaper colors so launchers keep light text.
 - `FOREGROUND_SERVICE` turned out not to be needed and is not declared.
