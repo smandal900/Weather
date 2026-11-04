@@ -168,7 +168,7 @@ abstract class Landscape {
 
     companion object {
         fun create(type: LandscapeType): Landscape = when (type) {
-            LandscapeType.FOREST -> PaintedForestLandscape()
+            LandscapeType.FOREST -> ForestLandscape()
             LandscapeType.MOUNTAIN -> MountainLandscape()
             LandscapeType.HILL -> HillLandscape()
             LandscapeType.SEA_BEACH -> BeachLandscape()

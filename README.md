@@ -158,6 +158,8 @@ Choices made where the spec left room:
 - **Light rain** (codes 61, 66, 80) uses the Drizzle scene; moderate and heavy rain use Heavy rain.
 - **Morning / Evening** are the dawn and dusk buckets: 05:00–07:59 and 17:00–20:59 in daylight.
 - **Landscape** defaults to Forest and is never chosen automatically.
+- **Painted landscapes:** every landscape is painted in detail into a few bitmaps on a background thread (conifers grown branch by branch from needle clusters, leafy trees from shaded clusters, faceted mountains with snow, textured rocks, grass, painted houses and cliffs). The bitmaps are repainted only when the size, time of day or weather changes; each frame only copies them and draws the moving parts (water, boat, foam, palm, waterfall, swaying grass). CPU use stays around 30-45% of one core, comparable to the simple style.
+- A GPU-shader version of the sea was tried and dropped because it used about twice the CPU (see the ealistic-sea-demo branch).
 - **Cross-fade** captures the old frame once into a reusable bitmap and fades it out, so changes
   of weather, time of day or landscape all blend smoothly.
 - **Settings** and the cached weather are each stored as one JSON string in Preferences DataStore.
