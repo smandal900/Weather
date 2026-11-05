@@ -132,7 +132,7 @@ class MountainLandscape : PaintedLandscape() {
     private fun far(k: PaintKit): Bitmap? {
         val (c, bmp) = k.newLayer(layers[0]) ?: return null
         val l = k.l; val h = k.h
-        k.mountain(
+        k.peaks(
             c, Ridge(k.width, h * 0.66f, h * 0.22f, true, 4), h * 0.8f,
             l.distant(l.ground(0xFF8D9DB3.toInt()), 0.45f), l.distant(l.ground(0xFF5C6B82.toInt()), 0.45f),
             Random(11), snowLine = h * 0.5f,
@@ -145,7 +145,7 @@ class MountainLandscape : PaintedLandscape() {
         val (c, bmp) = k.newLayer(layers[1]) ?: return null
         val l = k.l; val h = k.h
         val rnd = Random(12)
-        k.mountain(
+        k.peaks(
             c, Ridge(k.width, h * 0.76f, h * 0.15f, true, 5), h * 0.92f,
             l.distant(l.ground(0xFF6B788C.toInt()), 0.22f), l.distant(l.ground(0xFF3A4556.toInt()), 0.22f), rnd,
         )
@@ -168,7 +168,7 @@ class MountainLandscape : PaintedLandscape() {
         val l = k.l; val h = k.h; val w = k.w
         val rnd = Random(13)
         val ridge = Ridge(k.width, h * 0.9f, h * 0.06f, true, 14)
-        k.mountain(c, ridge, h, l.ground(0xFF4A5260.toInt()), l.ground(0xFF1E232C.toInt()), rnd)
+        k.peaks(c, ridge, h, l.ground(0xFF4A5260.toInt()), l.ground(0xFF1E232C.toInt()), rnd)
         val lit = l.foliage(0xFF3F7A4B.toInt()); val dark = l.foliage(0xFF17301F.toInt())
         for (i in 0 until 7) {
             val x = w * (i / 6f) + (rnd.nextFloat() - 0.5f) * w * 0.08f
@@ -401,10 +401,10 @@ class SnowyPeaksLandscape : PaintedLandscape() {
     private fun far(k: PaintKit): Bitmap? {
         val (c, bmp) = k.newLayer(layers[0]) ?: return null
         val l = k.l; val h = k.h
-        k.mountain(
+        k.peaks(
             c, Ridge(k.width, h * 0.66f, h * 0.38f, true, 15), h * 0.8f,
             l.distant(l.shade(0xFF8794AB.toInt()), 0.3f), l.distant(l.shade(0xFF566379.toInt()), 0.3f),
-            Random(41), snowLine = h * 0.56f,
+            Random(41), snowLine = h * 0.6f, snowDepth = 0.22f,
         )
         k.haze(c, h * 0.55f, h * 0.8f, 0.4f)
         return bmp
@@ -415,9 +415,9 @@ class SnowyPeaksLandscape : PaintedLandscape() {
         val l = k.l; val h = k.h
         val rnd = Random(42)
         val ridge = Ridge(k.width, h * 0.78f, h * 0.17f, true, 16)
-        k.mountain(
+        k.peaks(
             c, ridge, h * 0.92f, l.distant(l.shade(0xFF65738A.toInt()), 0.15f), l.distant(l.shade(0xFF39445A.toInt()), 0.15f),
-            rnd, snowLine = h * 0.7f,
+            rnd, snowLine = h * 0.76f, snowDepth = 0.15f,
         )
         k.haze(c, h * 0.78f, h * 0.9f, 0.25f)
         return bmp

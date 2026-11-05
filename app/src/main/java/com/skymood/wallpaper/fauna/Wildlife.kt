@@ -130,9 +130,7 @@ class Wildlife {
 
         if (!night && !sea && ls != LandscapeType.SNOWY_PEAKS) target[0] = if (fair) 6 else if (dull) 3 else if (windy) 2 else 0
         if (!night && sea) target[1] = if (fair) 5 else if (dull) 4 else if (windy) 7 else if (wx == SceneType.DRIZZLE) 2 else 0
-        val eagleLand = ls == LandscapeType.MOUNTAIN || ls == LandscapeType.SNOWY_PEAKS || ls == LandscapeType.HILL ||
-            ls == LandscapeType.FOREST || ls == LandscapeType.WATERFALL || ls == LandscapeType.RIVER_VALLEY
-        if (!night && eagleLand && (fair || windy)) target[2] = if (ls == LandscapeType.MOUNTAIN || ls == LandscapeType.SNOWY_PEAKS) 2 else 1
+        // No big soaring eagles: the small birds, gulls and geese are the only daytime flyers.
         gooseDay = twilight && dry && ls != LandscapeType.WATERFALL
         if (night && dry && !sea && ls != LandscapeType.SNOWY_PEAKS) target[4] = 5 else if (tod == TimeOfDay.DUSK && dry && !sea) target[4] = 3
         val glowLand = ls == LandscapeType.FOREST || ls == LandscapeType.GRASS_FIELD || ls == LandscapeType.HILL ||

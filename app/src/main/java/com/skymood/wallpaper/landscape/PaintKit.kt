@@ -425,6 +425,146 @@ class PaintKit(val width: Int, val height: Int, val l: Lighting) {
         c.restore()
     }
 
+    /**
+     * Faceted mountains built from the ridge's real peaks. Every peak gets a lit face and a shaded
+     * face either side of a jagged spur running down from the summit, plus a few ribs, so the range
+     * reads as rock with form. Each face fades out towards the foot, so no hard-edged bars appear.
+     * Snow caps (when [snowLine] is given) end in ragged teeth and tongues and turn bluish on the
+     * shaded side.
+     */
+    fun peaks(
+        c: Canvas, ridge: Ridge, bottom: Float, lit: Int, dark: Int, rnd: Random, snowLine: Float? = null,
+        snowDepth: Float = 0.1f,
+    ) {
+        val body = Path(); ridge.addTo(body, bottom)
+        val step = 6f * unit
+        val n = ((w * 1.1f - ridge.left) / step).toInt() + 1
+        val xs = FloatArray(n) { ridge.left + it * step }
+        val ys = FloatArray(n) { ridge.yAt(xs[it]) }
+        var minY = bottom
+        for (v in ys) minY = min(minY, v)
+        shader = LinearGradient(0f, minY, 0f, bottom, lit, dark, Shader.TileMode.CLAMP)
+        c.drawPath(body, fill)
+        shader = null
+
+        // Find the peaks: the highest point within a window, standing clear of the land either side.
+        val rad = max(3, (w * 0.045f / step).toInt())
+        val reach = (w * 0.3f / step).toInt()
+        fun valley(from: Int, dir: Int): Int {
+            var worst = from
+            var k = from + dir
+            while (k in 0 until n && abs(k - from) <= reach) {
+                if (ys[k] > ys[worst]) worst = k
+                if (ys[worst] - ys[k] > h * 0.012f) break   // climbing towards the next peak
+                k += dir
+            }
+            return worst
+        }
+        val peakList = ArrayList<IntArray>()
+        for (i in rad until n - rad) {
+            var top = true
+            for (j in i - rad..i + rad) if (ys[j] < ys[i] || (j < i && ys[j] == ys[i])) { top = false; break }
+            if (!top) continue
+            val lv = valley(i, -1); val rv = valley(i, 1)
+            if (min(ys[lv], ys[rv]) - ys[i] < h * 0.022f) continue
+            peakList.add(intArrayOf(i, lv, rv))
+        }
+        peakList.sortByDescending { ys[it[0]] }   // lowest first, so higher peaks overlap them
+
+        c.save()
+        c.clipPath(body)
+        val shadowDir = if (sunOnLeft) 1 else -1
+        val shadowCol = darken(dark, 0.3f)
+        val glowCol = lighten(lit, 0.45f)
+        val snowLit = l.shade(Lighting.SNOW)
+        val snowShade = mix(snowLit, 0xFF7A90B8.toInt(), 0.5f)
+        val face = Path(); val side = Path(); val cap = Path(); val rib = Path()
+        val m = 7
+        val sx = FloatArray(m + 1); val sy = FloatArray(m + 1)
+        for (pk in peakList) {
+            val i = pk[0]
+            val px = xs[i]; val py = ys[i]
+            val shV = if (shadowDir > 0) pk[2] else pk[1]
+            val litV = if (shadowDir > 0) pk[1] else pk[2]
+            val ext = max(abs(xs[shV] - px), abs(xs[litV] - px))
+            val yb = max(py + (bottom - py) * 0.62f, max(ys[shV], ys[litV]) + h * 0.04f).coerceAtMost(bottom)
+            val bx = px - shadowDir * ext * 0.06f
+            // The spur: a jagged line from the summit down to the point where the two faces meet.
+            for (k in 0..m) {
+                val t = k / m.toFloat()
+                sx[k] = px + (bx - px) * t + (if (k in 1 until m) (rnd.nextFloat() - 0.5f) * ext * 0.1f else 0f)
+                sy[k] = py + (yb - py) * t
+            }
+            // A face: down the silhouette to the valley, along the valley line, and back up the spur.
+            fun facePath(p: Path, vi: Int) {
+                p.rewind(); p.moveTo(px, py)
+                val dir = if (vi > i) 1 else -1
+                var j = i + dir
+                while (j != vi + dir && j in 0 until n) { p.lineTo(xs[j], ys[j]); j += dir }
+                p.lineTo(bx, yb)
+                for (k in m - 1 downTo 1) p.lineTo(sx[k], sy[k])
+                p.close()
+            }
+            facePath(face, shV)
+            shader = LinearGradient(0f, py, 0f, yb, alpha(shadowCol, 135), alpha(shadowCol, 0), Shader.TileMode.CLAMP)
+            c.drawPath(face, fill)
+            facePath(side, litV)
+            shader = LinearGradient(0f, py, 0f, yb, alpha(glowCol, 60), alpha(glowCol, 0), Shader.TileMode.CLAMP)
+            c.drawPath(side, fill)
+            // Ribs and gullies breaking up the faces, tapering and fading as they run down.
+            fun ribDown(vi: Int, col: Int, a: Int) {
+                val j = (i + (vi - i) * (0.2f + 0.7f * rnd.nextFloat())).toInt().coerceIn(0, n - 1)
+                val x0 = xs[j]; val y0 = ys[j]
+                val ey = y0 + (yb - y0) * (0.45f + 0.5f * rnd.nextFloat())
+                val ex = x0 + (bx - x0) * 0.25f * rnd.nextFloat() + (rnd.nextFloat() - 0.5f) * ext * 0.08f
+                val wd = (2f + 5f * rnd.nextFloat()) * unit
+                rib.rewind(); rib.moveTo(x0 - wd, y0); rib.lineTo(x0 + wd, y0); rib.lineTo(ex, ey); rib.close()
+                shader = LinearGradient(0f, y0, 0f, ey, alpha(col, a), alpha(col, 0), Shader.TileMode.CLAMP)
+                c.drawPath(rib, fill)
+            }
+            repeat(3) { ribDown(shV, shadowCol, 80) }
+            repeat(2) { ribDown(litV, shadowCol, 34) }
+            shader = null
+
+            if (snowLine != null && py < snowLine) {
+                val depth = ((snowLine - py) * 0.8f + h * 0.012f).coerceIn(h * 0.02f, h * snowDepth)
+                var l0 = i; while (l0 > pk[1] && ys[l0] < py + depth) l0--
+                var r0 = i; while (r0 < pk[2] && ys[r0] < py + depth) r0++
+                cap.rewind()
+                cap.moveTo(xs[l0], ys[l0])
+                for (j in l0 + 1..r0) cap.lineTo(xs[j], ys[j])
+                // Ragged lower edge: teeth, notches and the odd long tongue of snow running down a gully.
+                val teeth = max(4, ((xs[r0] - xs[l0]) / (20f * unit)).toInt())
+                val tooth = min(depth, h * 0.06f)   // deeper snow gets a bigger cap, not longer needles
+                for (k in 1..teeth) {
+                    val t = k / teeth.toFloat()
+                    val x = xs[r0] + (xs[l0] - xs[r0]) * t
+                    val base = ys[r0] + (ys[l0] - ys[r0]) * t
+                    val dy = when {
+                        k == teeth -> 0f
+                        k % 2 == 1 ->
+                            if (rnd.nextFloat() < 0.1f) tooth * (0.5f + 0.4f * rnd.nextFloat())
+                            else tooth * (0.08f + 0.22f * rnd.nextFloat())
+                        else -> -tooth * (0.05f + 0.2f * rnd.nextFloat())
+                    }
+                    cap.lineTo(x, base + dy)
+                }
+                cap.close()
+                fill.color = snowLit; c.drawPath(cap, fill)
+                c.save(); c.clipPath(face); fill.color = snowShade; c.drawPath(cap, fill); c.restore()
+            }
+        }
+        // A crisp rim of light along the sun-facing silhouette.
+        line.strokeWidth = 2f * unit
+        line.color = alpha(lighten(lit, 0.5f), 110)
+        for (j in 5 until n - 6) {
+            val wide = ys[j + 5] - ys[j - 5]
+            val shadow = if (sunOnLeft) wide > 0f else wide < 0f
+            if (!shadow) c.drawLine(xs[j], ys[j] + 1f, xs[j + 1], ys[j + 1] + 1f, line)
+        }
+        c.restore()
+    }
+
     /** Smooth hill: gradient body, a lit crest on the sun side and a scatter of grass tufts. */
     fun hill(c: Canvas, ridge: Ridge, bottom: Float, top: Int, base: Int, rnd: Random, tufts: Int = 600) {
         val body = Path(); ridge.addTo(body, bottom)
