@@ -13,6 +13,7 @@ import android.graphics.Shader
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import kotlin.math.sin
 import kotlin.random.Random
 
 /**
@@ -91,21 +92,34 @@ internal fun PaintKit.shapedTree(c: Canvas, x: Float, baseY: Float, th: Float, l
 
     // Crown colour: lit at the top, deep at the bottom, lighter on the sun's side.
     val p = Paint(Paint.ANTI_ALIAS_FLAG)
-    p.shader = LinearGradient(0f, 0f, 0f, hPx * 0.7f, mix(lit, dark, 0.15f), deep, Shader.TileMode.CLAMP)
+    val bright = lighten(mix(lit, 0xFFB4D83C.toInt(), 0.25f), 0.08f)   // sunlit, yellow-green
+    val mid = mix(dark, lit, 0.45f)
+    val shade = mix(dark, deep, 0.4f)
+    p.shader = LinearGradient(0f, 0f, 0f, hPx * 0.62f, mix(mid, bright, 0.4f), shade, Shader.TileMode.CLAMP)
     cc.drawRect(0f, 0f, wPx.toFloat(), hPx.toFloat(), p)
     // Leaf dabs: many small blobs in varied greens, brighter towards the top and the sun.
-    val dabs = (2600 * (th / (300f * unit)).coerceIn(0.4f, 2.2f)).toInt()
+    val dabs = (3200 * (th / (300f * unit)).coerceIn(0.4f, 2.2f)).toInt()
     for (i in 0 until dabs) {
-        val dx = rnd.nextFloat(); val dy = rnd.nextFloat() * 0.66f
-        val lightness = (0.7f - dy * 1.0f - sun * (dx - 0.5f) * 0.6f + (rnd.nextFloat() - 0.5f) * 0.45f).coerceIn(0f, 1f)
+        val dx = rnd.nextFloat(); val dy = rnd.nextFloat() * 0.62f
+        val lightness = (0.72f - dy * 0.9f - sun * (dx - 0.5f) * 0.5f + (rnd.nextFloat() - 0.5f) * 0.5f).coerceIn(0f, 1f)
         p.shader = null
-        p.color = jitter(mix(deep, mix(dark, lit, 0.9f), lightness), rnd, 0.16f)
+        p.color = jitter(mix(shade, bright, lightness), rnd, 0.14f)
         cc.drawCircle(dx * wPx, dy * hPx, hPx * (0.005f + 0.011f * rnd.nextFloat()), p)
     }
-    // Limbs and trunk: brown that takes over below the crown.
-    val brown = mix(trunk, Color.BLACK, 0.12f)
-    p.shader = LinearGradient(0f, hPx * 0.52f, 0f, hPx * 0.7f, alpha(brown, 0), brown, Shader.TileMode.CLAMP)
-    cc.drawRect(0f, hPx * 0.52f, wPx.toFloat(), hPx.toFloat(), p)
+    // Sunlit tufts along the upper side of each leafy tier, as in the picture's layered canopy.
+    for (tier in 0 until 7) {
+        val yc = hPx * (0.1f + 0.075f * tier)
+        repeat((150 * (th / (300f * unit)).coerceIn(0.4f, 2.2f)).toInt()) {
+            val tx = rnd.nextFloat() * wPx
+            val ty = yc + (rnd.nextFloat() - 0.3f) * hPx * 0.06f + sin(tx / wPx * 9f + tier * 1.7f) * hPx * 0.02f
+            p.color = alpha(jitter(mix(bright, 0xFFE6EC6A.toInt(), 0.3f * rnd.nextFloat()), rnd, 0.1f), 120)
+            cc.drawCircle(tx, ty, hPx * (0.004f + 0.007f * rnd.nextFloat()), p)
+        }
+    }
+    // Limbs and trunk: brown that takes over below the crown, so the branches show as in the picture.
+    val brown = lighten(mix(trunk, Color.BLACK, 0.05f), 0.22f)
+    p.shader = LinearGradient(0f, hPx * 0.46f, 0f, hPx * 0.6f, alpha(brown, 0), brown, Shader.TileMode.CLAMP)
+    cc.drawRect(0f, hPx * 0.46f, wPx.toFloat(), hPx.toFloat(), p)
     p.shader = null
     // Bark streaks on the trunk.
     p.strokeWidth = max(1f, th * 0.004f); p.style = Paint.Style.STROKE
