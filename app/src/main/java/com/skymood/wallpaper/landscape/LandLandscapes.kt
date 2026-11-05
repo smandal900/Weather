@@ -342,7 +342,7 @@ class GrassFieldLandscape : PaintedLandscape() {
         c.drawCircle(ox, gy, th * 0.3f, k.fill)
         k.shader = null
         // The big oak uses the outline of a real tree when it is bundled; the drawn tree is the fallback.
-        val bigLit = l.foliage(0xFF8CD04A.toInt()); val bigDark = l.foliage(0xFF2F6E22.toInt()); val bark = l.shade(0xFF5E4430.toInt())
+        val bigLit = l.foliage(0xFF7CC862.toInt()); val bigDark = l.foliage(0xFF2A5A2A.toInt()); val bark = l.shade(0xFF4E3A28.toInt())
         if (!k.shapedTree(c, ox, gy, h * 0.4f, bigLit, bigDark, bark, rnd)) k.broadleaf(c, ox, gy, th, bigLit, bigDark, bark, rnd, 1f)
         k.grass(c, ridge, h, 1400, l.ground(0xFF8FC060.toInt()), l.ground(0xFF234A1C.toInt()), rnd)
         k.flowers(c, ridge, h, 160, rnd)
