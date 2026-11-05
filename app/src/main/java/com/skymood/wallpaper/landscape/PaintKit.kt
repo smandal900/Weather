@@ -303,13 +303,12 @@ class PaintKit(val width: Int, val height: Int, val l: Lighting) {
         // Faces are shaded with one smooth path per layer (a path per slice leaves hairline seams
         // that look like scratches), with soft, fading depth rather than hard grooves.
         val step = 6f * unit
-        val depth = h * 0.04f
+        val depth = h * 0.065f
         val shadowPath = Path(); val lightPath = Path()
         // Soften the edges between lit and shaded faces so no hard vertical line shows; clipped to
         // the mountain so the blur never leaks into the sky.
         c.save()
         c.clipPath(body)
-        fill.maskFilter = android.graphics.BlurMaskFilter(3.5f * unit, android.graphics.BlurMaskFilter.Blur.NORMAL)
         for (k in 0 until 6) {
             shadowPath.rewind(); lightPath.rewind()
             val f = 1f - k * 0.15f
@@ -321,7 +320,7 @@ class PaintKit(val width: Int, val height: Int, val l: Lighting) {
                 val y0 = ridge.yAt(x); val y1 = ridge.yAt(x1)
                 val dy = y1 - y0
                 val steep = min(1f, abs(dy) / (step * 1.1f))
-                val d = prevD * 0.5f + depth * f * (0.3f + 0.4f * steep) * 0.55f * (if (steep > 0.1f) 1f else 0f)
+                val d = prevD * 0.35f + depth * f * 0.42f * (if (steep > 0.1f) 1f else 0f)
                 prevD = d
                 if (d > 0.5f) {
                     val wide = ridge.yAt(x + step * 5f) - ridge.yAt(x - step * 5f)
@@ -331,8 +330,8 @@ class PaintKit(val width: Int, val height: Int, val l: Lighting) {
                 }
                 x = x1
             }
-            fill.color = alpha(Color.BLACK, 14); c.drawPath(shadowPath, fill)
-            fill.color = alpha(Color.WHITE, 4); c.drawPath(lightPath, fill)
+            fill.color = alpha(Color.BLACK, 20); c.drawPath(shadowPath, fill)
+            fill.color = alpha(Color.WHITE, 8); c.drawPath(lightPath, fill)
         }
         if (snowLine != null) {
             val snowLit = l.shade(Lighting.SNOW)
