@@ -1,0 +1,11 @@
+Cloud photos used by SkyMood. All are from Wikimedia Commons under CC0 or public domain, cropped and resized.
+
+cu_1  File:Cumulus mediocris Hamilton Place Bowen Hills P1110146.jpg  (CC0)
+cu_2  File:Cumulus mediocris Gympie Rd Aspley P1430323.jpg  (CC0)
+cu_3  File:Cumulus mediocris Rivergate Marina Murarrie P1170618.jpg  (CC0)
+cu_4  File:Cumulus mediocris Kurilpa Bridge Brisbane P1350001.jpg  (CC0)
+cu_5  File:Cumulus humilis Sunbury St Geebung P1110722.jpg  (CC0)
+ov_1  File:Stratocumulus 1.jpg  (Public domain)
+st_1  File:Overcast or Cloudy Sky 01.jpg  (CC0)
+st_2  File:Storm clouds coming in over Gaseberg 1.jpg  (CC0)
+st_3  File:Storm clouds, from 14 Jeays St, Bowen Hills IMGP4905.jpg  (CC0)

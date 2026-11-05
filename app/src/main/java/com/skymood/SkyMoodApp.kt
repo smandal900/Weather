@@ -17,6 +17,7 @@ class SkyMoodApp : Application() {
     override fun onCreate() {
         super.onCreate()
         WeatherRefreshWorker.schedulePeriodic(this)
+        com.skymood.wallpaper.scenes.CloudTextures.init(assets)
     }
 }
 

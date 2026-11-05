@@ -1,5 +1,6 @@
 package com.skymood.wallpaper.scenes
 
+import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.LinearGradient
@@ -46,6 +47,17 @@ class CloudScene(
     private val sprites = arrayOfNulls<android.graphics.Bitmap>(TEMPLATES)
     private var spriteScale = 1f
     private val spritePaints = Array(LAYERS) { Paint(Paint.FILTER_BITMAP_FLAG) }
+    /** Paints for the real cloud photos; the colour filter tints them for the light. */
+    private val photoPaints = Array(LAYERS) { Paint(Paint.FILTER_BITMAP_FLAG) }
+    private val photoGroup = when (style) {
+        Style.FAIR -> CloudTextures.Group.CUMULUS
+        Style.OVERCAST -> CloudTextures.Group.OVERCAST
+        Style.RAIN, Style.SNOW -> CloudTextures.Group.RAIN
+        Style.STORM -> CloudTextures.Group.STORM
+    }
+
+    /** The photo banks, or an empty list while they load (the drawn clouds are used then). */
+    private fun photos(): List<Bitmap> = CloudTextures.get(photoGroup)
     private val dst = android.graphics.RectF()
 
     private fun bakeSprites() {
@@ -202,6 +214,9 @@ class CloudScene(
                 Shader.TileMode.CLAMP,
             )
             bodyPaints[l].shader = shader
+            photoPaints[l].colorFilter = android.graphics.PorterDuffColorFilter(
+                SkyGradient.blend(photoTint(light), skyColor, haze * 0.3f), android.graphics.PorterDuff.Mode.MULTIPLY,
+            )
             spritePaints[l].colorFilter = android.graphics.PorterDuffColorFilter(
                 SkyGradient.blend(light, skyColor, haze * 0.8f), android.graphics.PorterDuff.Mode.MULTIPLY,
             )
@@ -218,6 +233,14 @@ class CloudScene(
             floatArrayOf(0f, 0.6f, 1f), Shader.TileMode.CLAMP,
         )
         veilPaint.color = if (night) 0xFF161A22.toInt() else 0xFF9AA5B3.toInt()
+    }
+
+    /** Photos already hold their own shading, so storms and rain need a lighter tint than the drawn clouds. */
+    private fun photoTint(light: Int): Int = when (style) {
+        Style.STORM -> SkyGradient.blend(light, 0xFFFFFFFF.toInt(), 0.45f)
+        Style.RAIN -> SkyGradient.blend(light, 0xFFFFFFFF.toInt(), 0.35f)
+        Style.SNOW, Style.OVERCAST -> SkyGradient.blend(light, 0xFFFFFFFF.toInt(), 0.15f)
+        else -> light
     }
 
     private fun targetClouds(): Int {
@@ -240,12 +263,14 @@ class CloudScene(
         p.variant = Random.nextInt(TEMPLATES)
         val depth = 1f - p.layer * 0.28f
         val big = when (style) { Style.FAIR -> 1f; Style.OVERCAST -> 1.5f; else -> 1.3f }
-        p.size = unit * depth * big * (0.9f + Random.nextFloat() * 0.7f)
+        val photoBoost = if (style == Style.FAIR && photos().isNotEmpty()) 1.45f else 1f
+        p.size = unit * depth * big * photoBoost * (0.9f + Random.nextFloat() * 0.7f)
         // Near clouds sit lower on screen, far ones higher, which reads as depth.
         val band = when (style) { Style.FAIR -> 0.5f; Style.OVERCAST -> 0.42f; else -> 0.24f }
         val top = when (style) { Style.FAIR -> 0.02f; Style.OVERCAST -> -0.05f; else -> -0.04f }
         p.y = height * (top + (1f - p.layer / (LAYERS - 1f)) * band * 0.6f + Random.nextFloat() * band * 0.4f)
-        p.x = if (randomX) Random.nextFloat() * (width + 420f * p.size) - 420f * p.size else -430f * p.size
+        val bank = if (photos().isNotEmpty()) PHOTO_W else 420f
+        p.x = if (randomX) Random.nextFloat() * (width + bank * p.size) - bank * p.size else -(bank + 10f) * p.size
         p.vx = depth * (0.7f + Random.nextFloat() * 0.3f)
         p.phase = Random.nextFloat() * 6.28f
     }
@@ -320,6 +345,17 @@ class CloudScene(
     }
 
     private fun drawCloud(canvas: Canvas, p: Particle, shift: Float, layer: Int) {
+        val photos = photos()
+        if (photos.isNotEmpty()) {
+            val bmp = photos[p.variant % photos.size]
+            val tw = PHOTO_W * p.size
+            val th = tw * bmp.height / bmp.width
+            dst.set(p.x + shift, p.y, p.x + shift + tw, p.y + th)
+            val cover = if (style == Style.FAIR) (0.45f + cloudCover / 180f).coerceIn(0.45f, 1f) else 1f
+            photoPaints[layer].alpha = (255 * cover * (1f - 0.1f * layer)).toInt()
+            canvas.drawBitmap(bmp, null, dst, photoPaints[layer])
+            return
+        }
         val t = p.variant
         val n = templateCount[t]
         val xs = templateX[t]
@@ -360,6 +396,8 @@ class CloudScene(
 
     private companion object {
         const val MAX_CLOUDS = 14
+        /** Width of a photo cloud bank in drawing units, like the 420 of a drawn cloud. */
+        const val PHOTO_W = 760f
         const val LAYERS = 3
         const val TEMPLATES = 5
         const val MAX_PUFFS = 10
