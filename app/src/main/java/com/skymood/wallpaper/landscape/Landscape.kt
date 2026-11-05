@@ -214,7 +214,6 @@ abstract class Landscape {
             LandscapeType.CITY_SKYLINE -> CitySkylineLandscape()
             LandscapeType.HILL_STATION -> HillStationLandscape()
             LandscapeType.TEMPLE_HILLTOP -> TempleHilltopLandscape()
-            LandscapeType.BRIDGE_RIVER -> BridgeRiverLandscape()
             LandscapeType.CAMPING -> CampingLandscape()
             LandscapeType.RAILWAY_HILLS -> RailwayHillsLandscape()
             LandscapeType.TRAIN_VIADUCT -> TrainViaductLandscape()
