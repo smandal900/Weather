@@ -70,7 +70,7 @@ class LighthouseLandscape : PaintedLandscape() {
         val n = 40
         for (i in 0..n) {
             val u = i / n.toFloat()
-            body.lineTo(cx - half + 2f * half * u, hz - h * 0.05f * sin(PI.toFloat() * u).pow(1.2f) * (0.85f + 0.15f * sin(u * 19f)))
+            body.lineTo(cx - half + 2f * half * u, hz - h * 0.05f * sin(PI.toFloat() * u).coerceAtLeast(0f).pow(1.2f) * (0.85f + 0.15f * sin(u * 19f)))
         }
         body.lineTo(cx + half, hz + 1f)
         body.close()
@@ -80,7 +80,7 @@ class LighthouseLandscape : PaintedLandscape() {
         val lite = l.distant(l.foliage(0xFF5A8A62.toInt()), 0.55f); val dark = l.distant(l.foliage(0xFF2F5240.toInt()), 0.55f)
         for (i in 0 until 16) {
             val u = 0.1f + 0.8f * rnd.nextFloat()
-            val top = hz - h * 0.05f * sin(PI.toFloat() * u).pow(1.2f)
+            val top = hz - h * 0.05f * sin(PI.toFloat() * u).coerceAtLeast(0f).pow(1.2f)
             k.simplePine(c, cx - half + 2f * half * u, top + h * 0.004f, h * (0.008f + 0.008f * rnd.nextFloat()), lite, dark, rnd)
         }
         k.haze(c, h * 0.57f, h * 0.65f, 0.4f)

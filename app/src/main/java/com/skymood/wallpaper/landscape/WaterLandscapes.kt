@@ -146,61 +146,7 @@ class BeachLandscape : PaintedLandscape() {
         return bmp
     }
 
-    private fun palm(k: PaintKit): Bitmap? {
-        val th = k.h * 0.26f
-        val bw = (th * 1.6f).toInt()
-        val bh = (th * 1.25f).toInt()
-        val (c, bmp) = k.newSprite(bw, bh) ?: return null
-        val l = k.l
-        val rnd = Random(63)
-        val bx = bw * 0.55f; val by = bh - 2f
-        val cx = bx - th * 0.2f; val cy = by - th * 1.0f
-        val trunk = l.shade(0xFF7A5A3A.toInt())
-        var px = bx; var py = by
-        for (i in 1..28) {
-            val t = i / 28f
-            val x = (1 - t) * (1 - t) * bx + 2 * (1 - t) * t * (bx + th * 0.1f) + t * t * cx
-            val y = (1 - t) * (1 - t) * by + 2 * (1 - t) * t * (by - th * 0.55f) + t * t * cy
-            k.line.strokeWidth = th * 0.04f * (1f - 0.45f * t)
-            k.line.color = if (i % 3 == 0) k.darken(trunk, 0.3f) else k.jitter(trunk, rnd, 0.1f)
-            c.drawLine(px, py, x, y, k.line)
-            px = x; py = y
-        }
-        val lit = l.foliage(0xFF4E9A3E.toInt()); val dark = l.foliage(0xFF1E4A24.toInt())
-        for (f in 0 until 11) {
-            val a = -PI.toFloat() + 0.2f + f * (PI.toFloat() - 0.4f) / 10f
-            val len = th * (0.5f + rnd.nextFloat() * 0.12f)
-            val ex = cx + cos(a) * len
-            val ey = cy + sin(a) * len * 0.45f + len * 0.3f
-            val qx = cx + cos(a) * len * 0.55f
-            val qy = cy + sin(a) * len * 0.55f - len * 0.3f
-            k.line.strokeWidth = max(1.5f, th * 0.008f)
-            k.line.color = k.darken(lit, 0.25f)
-            var sx = cx; var sy = cy
-            for (j in 1..24) {
-                val t = j / 24f
-                val x = (1 - t) * (1 - t) * cx + 2 * (1 - t) * t * qx + t * t * ex
-                val y = (1 - t) * (1 - t) * cy + 2 * (1 - t) * t * qy + t * t * ey
-                val tx = x - sx; val ty = y - sy
-                val tl = kotlin.math.sqrt(tx * tx + ty * ty).coerceAtLeast(0.001f)
-                val nx = -ty / tl; val nyv = tx / tl
-                val leaf = len * 0.2f * (1f - 0.55f * t) * (0.8f + rnd.nextFloat() * 0.4f)
-                val sunSide = if (a < -PI.toFloat() / 2f) -1f else 1f
-                val tone = (0.5f + 0.4f * (if (sunSide == k.sun) 1f else -1f) + (rnd.nextFloat() - 0.5f) * 0.3f).coerceIn(0f, 1f)
-                k.line.color = k.jitter(k.mix(dark, lit, tone), rnd, 0.12f)
-                k.line.strokeWidth = max(1f, th * 0.006f)
-                c.drawLine(x, y, x + nx * leaf + tx / tl * leaf * 0.5f, y + nyv * leaf + ty / tl * leaf * 0.5f + leaf * 0.3f, k.line)
-                c.drawLine(x, y, x - nx * leaf + tx / tl * leaf * 0.5f, y - nyv * leaf + ty / tl * leaf * 0.5f + leaf * 0.3f, k.line)
-                sx = x; sy = y
-            }
-            k.line.strokeWidth = max(1.5f, th * 0.008f)
-            k.line.color = k.darken(lit, 0.3f)
-            c.drawLine(cx, cy, ex, ey, k.line)
-        }
-        k.fill.color = k.darken(trunk, 0.45f)
-        for (i in 0 until 3) c.drawCircle(cx + (i - 1) * th * 0.03f, cy + th * 0.03f, th * 0.025f, k.fill)
-        return bmp
-    }
+    private fun palm(k: PaintKit): Bitmap? = paintPalm(k, 63)
 
     private companion object {
         const val FOAM_SEGMENTS = 24
@@ -975,4 +921,61 @@ class WaterfallLandscape : PaintedLandscape() {
     private companion object {
         const val STREAKS = 70
     }
+}
+
+/** A palm tree sprite: curved trunk, a crown of drooping fronds and coconuts. Shared by the tropical landscapes. */
+internal fun paintPalm(k: PaintKit, seed: Int): Bitmap? {
+    val th = k.h * 0.26f
+    val bw = (th * 1.6f).toInt()
+    val bh = (th * 1.25f).toInt()
+    val (c, bmp) = k.newSprite(bw, bh) ?: return null
+    val l = k.l
+    val rnd = Random(seed)
+    val bx = bw * 0.55f; val by = bh - 2f
+    val cx = bx - th * 0.2f; val cy = by - th * 1.0f
+    val trunk = l.shade(0xFF7A5A3A.toInt())
+    var px = bx; var py = by
+    for (i in 1..28) {
+        val t = i / 28f
+        val x = (1 - t) * (1 - t) * bx + 2 * (1 - t) * t * (bx + th * 0.1f) + t * t * cx
+        val y = (1 - t) * (1 - t) * by + 2 * (1 - t) * t * (by - th * 0.55f) + t * t * cy
+        k.line.strokeWidth = th * 0.04f * (1f - 0.45f * t)
+        k.line.color = if (i % 3 == 0) k.darken(trunk, 0.3f) else k.jitter(trunk, rnd, 0.1f)
+        c.drawLine(px, py, x, y, k.line)
+        px = x; py = y
+    }
+    val lit = l.foliage(0xFF4E9A3E.toInt()); val dark = l.foliage(0xFF1E4A24.toInt())
+    for (f in 0 until 11) {
+        val a = -PI.toFloat() + 0.2f + f * (PI.toFloat() - 0.4f) / 10f
+        val len = th * (0.5f + rnd.nextFloat() * 0.12f)
+        val ex = cx + cos(a) * len
+        val ey = cy + sin(a) * len * 0.45f + len * 0.3f
+        val qx = cx + cos(a) * len * 0.55f
+        val qy = cy + sin(a) * len * 0.55f - len * 0.3f
+        k.line.strokeWidth = max(1.5f, th * 0.008f)
+        k.line.color = k.darken(lit, 0.25f)
+        var sx = cx; var sy = cy
+        for (j in 1..24) {
+            val t = j / 24f
+            val x = (1 - t) * (1 - t) * cx + 2 * (1 - t) * t * qx + t * t * ex
+            val y = (1 - t) * (1 - t) * cy + 2 * (1 - t) * t * qy + t * t * ey
+            val tx = x - sx; val ty = y - sy
+            val tl = kotlin.math.sqrt(tx * tx + ty * ty).coerceAtLeast(0.001f)
+            val nx = -ty / tl; val nyv = tx / tl
+            val leaf = len * 0.2f * (1f - 0.55f * t) * (0.8f + rnd.nextFloat() * 0.4f)
+            val sunSide = if (a < -PI.toFloat() / 2f) -1f else 1f
+            val tone = (0.5f + 0.4f * (if (sunSide == k.sun) 1f else -1f) + (rnd.nextFloat() - 0.5f) * 0.3f).coerceIn(0f, 1f)
+            k.line.color = k.jitter(k.mix(dark, lit, tone), rnd, 0.12f)
+            k.line.strokeWidth = max(1f, th * 0.006f)
+            c.drawLine(x, y, x + nx * leaf + tx / tl * leaf * 0.5f, y + nyv * leaf + ty / tl * leaf * 0.5f + leaf * 0.3f, k.line)
+            c.drawLine(x, y, x - nx * leaf + tx / tl * leaf * 0.5f, y - nyv * leaf + ty / tl * leaf * 0.5f + leaf * 0.3f, k.line)
+            sx = x; sy = y
+        }
+        k.line.strokeWidth = max(1.5f, th * 0.008f)
+        k.line.color = k.darken(lit, 0.3f)
+        c.drawLine(cx, cy, ex, ey, k.line)
+    }
+    k.fill.color = k.darken(trunk, 0.45f)
+    for (i in 0 until 3) c.drawCircle(cx + (i - 1) * th * 0.03f, cy + th * 0.03f, th * 0.025f, k.fill)
+    return bmp
 }

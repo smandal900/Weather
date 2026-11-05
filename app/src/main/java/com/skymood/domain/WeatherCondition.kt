@@ -35,4 +35,5 @@ enum class LandscapeType(val label: String) {
     SNOWY_PEAKS("Snowy peaks"),
     COUNTRYSIDE_VILLAGE("Countryside village"),
     LIGHTHOUSE("Lighthouse on rocks"),
+    TROPICAL_ISLAND("Tropical island"),
 }
