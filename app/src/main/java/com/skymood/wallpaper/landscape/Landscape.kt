@@ -207,7 +207,6 @@ abstract class Landscape {
             LandscapeType.LIGHTHOUSE -> LighthouseLandscape()
             LandscapeType.TROPICAL_ISLAND -> TropicalIslandLandscape()
             LandscapeType.COASTAL_CLIFFS -> CoastalCliffsLandscape()
-            LandscapeType.FJORD -> FjordLandscape()
             LandscapeType.HARBOR -> HarborLandscape()
             LandscapeType.FROZEN_LAKE -> FrozenLakeLandscape()
             LandscapeType.MANGROVE_BACKWATERS -> MangroveBackwatersLandscape()

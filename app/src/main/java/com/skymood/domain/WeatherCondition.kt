@@ -37,7 +37,6 @@ enum class LandscapeType(val label: String) {
     LIGHTHOUSE("Lighthouse on rocks"),
     TROPICAL_ISLAND("Tropical island"),
     COASTAL_CLIFFS("Coastal cliffs"),
-    FJORD("Fjord"),
     HARBOR("Harbor with fishing boats"),
     FROZEN_LAKE("Frozen lake"),
     MANGROVE_BACKWATERS("Backwaters with houseboat"),

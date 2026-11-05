@@ -125,7 +125,7 @@ class Wildlife {
         val windy = wx == SceneType.WINDY
         val sea = ls == LandscapeType.SEA_BEACH || ls == LandscapeType.OPEN_SEA || ls == LandscapeType.SEA_WITH_BOAT ||
             ls == LandscapeType.LIGHTHOUSE || ls == LandscapeType.TROPICAL_ISLAND ||
-            ls == LandscapeType.COASTAL_CLIFFS || ls == LandscapeType.FJORD || ls == LandscapeType.HARBOR
+            ls == LandscapeType.COASTAL_CLIFFS || ls == LandscapeType.HARBOR
         val dry = fair || dull || windy
 
         if (!night && !sea && ls != LandscapeType.SNOWY_PEAKS) target[0] = if (fair) 6 else if (dull) 3 else if (windy) 2 else 0
