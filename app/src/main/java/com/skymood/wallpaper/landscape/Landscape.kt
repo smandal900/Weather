@@ -218,7 +218,6 @@ abstract class Landscape {
             LandscapeType.CAMPING -> CampingLandscape()
             LandscapeType.RAILWAY_HILLS -> RailwayHillsLandscape()
             LandscapeType.TRAIN_VIADUCT -> TrainViaductLandscape()
-            LandscapeType.MOUNTAIN_ROAD -> MountainRoadLandscape()
             LandscapeType.COUNTRY_CYCLE -> CountryCycleLandscape()
         }
     }

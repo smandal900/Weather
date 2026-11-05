@@ -48,6 +48,5 @@ enum class LandscapeType(val label: String) {
     CAMPING("Camping with campfire"),
     RAILWAY_HILLS("Railway through hills"),
     TRAIN_VIADUCT("Train on a bridge"),
-    MOUNTAIN_ROAD("Lonely mountain road"),
     COUNTRY_CYCLE("Bicycle on a country path"),
 }
