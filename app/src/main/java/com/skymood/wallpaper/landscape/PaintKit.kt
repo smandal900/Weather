@@ -156,6 +156,26 @@ class PaintKit(val width: Int, val height: Int, val l: Lighting) {
         line.strokeWidth = max(1.2f, th * 0.0042f)
         val deep = darken(dark, 0.35f)
 
+        // A dense core down the middle of the crown, so no thin see-through line shows where the
+        // branches start (it read as a pale vertical scratch through every tree).
+        val core = Path()
+        val coreSteps = 14
+        core.moveTo(x - maxLen * 0.26f, crownBottom)
+        for (s in 1..coreSteps) {
+            val t = s / coreSteps.toFloat()
+            val hw = maxLen * 0.3f * (1f - t).pow(0.7f) + th * 0.004f
+            core.lineTo(x + lean * t - hw, crownBottom - (crownBottom - crownTop) * t)
+        }
+        for (s in coreSteps downTo 1) {
+            val t = s / coreSteps.toFloat()
+            val hw = maxLen * 0.3f * (1f - t).pow(0.7f) + th * 0.004f
+            core.lineTo(x + lean * t + hw, crownBottom - (crownBottom - crownTop) * t)
+        }
+        core.lineTo(x + maxLen * 0.26f, crownBottom)
+        core.close()
+        fill.color = mix(deep, dark, 0.35f)
+        c.drawPath(core, fill)
+
         for (pass in 0..1) { // 0 = branches behind the trunk, 1 = in front
             for (i in 0 until whorls) {
                 val t = i / (whorls - 1f) // 0 bottom .. 1 top
@@ -283,8 +303,13 @@ class PaintKit(val width: Int, val height: Int, val l: Lighting) {
         // Faces are shaded with one smooth path per layer (a path per slice leaves hairline seams
         // that look like scratches), with soft, fading depth rather than hard grooves.
         val step = 6f * unit
-        val depth = h * 0.06f
+        val depth = h * 0.04f
         val shadowPath = Path(); val lightPath = Path()
+        // Soften the edges between lit and shaded faces so no hard vertical line shows; clipped to
+        // the mountain so the blur never leaks into the sky.
+        c.save()
+        c.clipPath(body)
+        fill.maskFilter = android.graphics.BlurMaskFilter(3.5f * unit, android.graphics.BlurMaskFilter.Blur.NORMAL)
         for (k in 0 until 6) {
             shadowPath.rewind(); lightPath.rewind()
             val f = 1f - k * 0.15f
@@ -324,7 +349,7 @@ class PaintKit(val width: Int, val height: Int, val l: Lighting) {
                     val wide = ridge.yAt(x + step * 5f) - ridge.yAt(x - step * 5f)
                     val shadow = if (sunOnLeft) wide > 0f else wide < 0f
                     // Depth follows the peak height and is smoothed, so the snow edge flows instead of striping.
-                    val d = (((snowLine - top) * 0.75f + 3f) * 0.8f) * 0.3f + prevD * 0.7f
+                    val d = minOf(h * 0.09f, (((snowLine - top) * 0.75f + 3f) * 0.8f) * 0.3f + prevD * 0.7f)
                     prevD = d
                     val p = if (shadow) shadeP else litP
                     p.moveTo(x, y0); p.lineTo(x1 + 0.6f, y1); p.lineTo(x1 + 0.6f, y1 + d); p.lineTo(x, y0 + d); p.close()
@@ -334,6 +359,8 @@ class PaintKit(val width: Int, val height: Int, val l: Lighting) {
             fill.color = snowShade; c.drawPath(shadeP, fill)
             fill.color = snowLit; c.drawPath(litP, fill)
         }
+        fill.maskFilter = null
+        c.restore()
     }
 
     /** Smooth hill: gradient body, a lit crest on the sun side and a scatter of grass tufts. */
