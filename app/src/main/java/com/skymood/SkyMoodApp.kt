@@ -18,6 +18,7 @@ class SkyMoodApp : Application() {
         super.onCreate()
         WeatherRefreshWorker.schedulePeriodic(this)
         com.skymood.wallpaper.scenes.CloudTextures.init(assets)
+        com.skymood.wallpaper.landscape.TreeShape.init(assets)
     }
 }
 
