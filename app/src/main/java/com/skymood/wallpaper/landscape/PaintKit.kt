@@ -151,9 +151,9 @@ class PaintKit(val width: Int, val height: Int, val l: Lighting) {
         val crownBottom = baseY - th * 0.05f
         val crownTop = baseY - th
         val maxLen = th * (0.3f + rnd.nextFloat() * 0.06f)
-        val whorls = (46 * detail).toInt().coerceAtLeast(12)
+        val whorls = (44 * detail).toInt().coerceAtLeast(12)
         val clusterSize = th * 0.03f
-        line.strokeWidth = max(1.2f, th * 0.0042f)
+        line.strokeWidth = max(1f, th * 0.0032f)
         val deep = darken(dark, 0.35f)
 
         // A dense core down the middle of the crown, so no thin see-through line shows where the
@@ -185,7 +185,7 @@ class PaintKit(val width: Int, val height: Int, val l: Lighting) {
                 for (side in intArrayOf(-1, 1)) {
                     if (pass == 0 && rnd.nextFloat() < 0.2f) continue
                     // Real firs have gaps between their drooping branches, most of all low down.
-                    if (pass == 1 && t < 0.85f && rnd.nextFloat() < 0.16f * (1.1f - t)) continue
+                    if (pass == 1 && t < 0.85f && rnd.nextFloat() < 0.24f * (1.1f - t)) continue
                     val reach = if (pass == 0) len * 0.8f else len
                     val ex = cx + side * reach
                     // Lower branches droop more; the tips curl back up a little.
@@ -204,7 +204,7 @@ class PaintKit(val width: Int, val height: Int, val l: Lighting) {
                             val ny = iu * iu * y + 2 * iu * u * qy + u * u * ey
                             c.drawLine(bx, by, nx, ny, line); bx = nx; by = ny
                         }
-                        line.strokeWidth = max(1.2f, th * 0.0042f)
+                        line.strokeWidth = max(1f, th * 0.0032f)
                     }
                     val clusters = (reach / (clusterSize * 0.75f)).toInt().coerceIn(2, 16)
                     for (k in 0..clusters) {
@@ -220,11 +220,19 @@ class PaintKit(val width: Int, val height: Int, val l: Lighting) {
                             rnd, 0.12f,
                         )
                         val size = clusterSize * (0.6f + 0.6f * u) * (0.8f + rnd.nextFloat() * 0.4f)
-                        val needles = (7 * detail).toInt().coerceIn(4, 9)
+                        val needles = (8 * detail).toInt().coerceIn(4, 9)
                         for (n in 0 until needles) {
                             val a = side * 0.35f + (n - needles / 2f) * 0.32f + (rnd.nextFloat() - 0.5f) * 0.3f + 1.2f
                             val nl = size * (0.6f + rnd.nextFloat() * 0.6f)
                             c.drawLine(px, py, px + cos(a) * nl * side * 0.9f, py + sin(a) * nl, line)
+                        }
+                        // Fine twigs hanging from the branch: the droopy curtain real firs have.
+                        if (pass == 1 && k > 0) {
+                            repeat(2) {
+                                val tl = size * (1.1f + rnd.nextFloat() * 1.2f)
+                                val tx = px + (rnd.nextFloat() - 0.5f) * size * 0.5f
+                                c.drawLine(tx, py, tx + side * size * 0.12f, py + tl, line)
+                            }
                         }
                     }
                 }
@@ -235,90 +243,103 @@ class PaintKit(val width: Int, val height: Int, val l: Lighting) {
     }
 
     /**
-     * A spreading leafy tree: a trunk that forks into visible limbs, carrying several flat, layered
-     * pads of leaves (lit on top and on the sun's side, dark beneath, with the sky showing between
-     * pads), like an acacia or a rain tree rather than a round ball.
+     * A leafy tree: a trunk that forks into limbs, under a lumpy dome made of many overlapping
+     * clumps of leaves. Every clump is dark underneath and lit on top and on the sun's side, built
+     * from hundreds of small leaf dabs with a ragged edge, so the crown has the broken, billowy
+     * outline of a real tree instead of a flat disc.
      */
     fun broadleaf(
         c: Canvas, x: Float, baseY: Float, th: Float, lit: Int, dark: Int, trunk: Int,
         rnd: Random, detail: Float,
     ) {
-        val deep = darken(dark, 0.35f)
-        val crownW = th * 0.95f
-        val crownCy = baseY - th * 0.6f
-        val forkY = baseY - th * 0.3f
+        val deep = darken(dark, 0.42f)
         val small = th < 140f * unit
+        val r = th * 0.4f                      // half the crown width
+        val cy = baseY - th * 0.58f            // centre of the crown
+        val forkY = baseY - th * 0.26f
 
-        // Pads first (positions), so the limbs can be drawn up to them.
-        val pads = if (small) 5 else (7 + (detail * 4f).toInt()).coerceAtMost(11)
-        val px = FloatArray(pads); val py = FloatArray(pads); val pw = FloatArray(pads)
-        for (i in 0 until pads) {
-            val u = if (pads == 1) 0.5f else i / (pads - 1f)
-            val spread = (u - 0.5f) * 2f // -1..1
-            px[i] = x + spread * crownW * 0.42f + (rnd.nextFloat() - 0.5f) * crownW * 0.06f
-            // Centre pads stand higher than the outer ones, giving the domed umbrella shape.
-            py[i] = crownCy - (1f - spread * spread) * th * 0.14f + (rnd.nextFloat() - 0.4f) * th * 0.05f
-            pw[i] = crownW * (0.46f + 0.14f * rnd.nextFloat()) * (1f - 0.22f * abs(spread))
-        }
-
-        // Trunk and limbs.
-        val trunkW = th * 0.03f
+        // Trunk, with bark lines, flaring a little at the base.
+        val trunkW = th * 0.032f
         val tp = Path()
-        tp.moveTo(x - trunkW * 1.15f, baseY)
-        tp.quadTo(x - trunkW * 0.5f, baseY - th * 0.15f, x - trunkW * 0.7f, forkY)
-        tp.lineTo(x + trunkW * 0.7f, forkY)
-        tp.quadTo(x + trunkW * 0.5f, baseY - th * 0.15f, x + trunkW * 1.15f, baseY)
+        tp.moveTo(x - trunkW * 1.5f, baseY)
+        tp.quadTo(x - trunkW * 0.6f, baseY - th * 0.1f, x - trunkW * 0.75f, forkY)
+        tp.lineTo(x + trunkW * 0.75f, forkY)
+        tp.quadTo(x + trunkW * 0.6f, baseY - th * 0.1f, x + trunkW * 1.5f, baseY)
         tp.close()
         shader = LinearGradient(
             x - trunkW, 0f, x + trunkW, 0f,
-            if (sunOnLeft) lighten(trunk, 0.1f) else darken(trunk, 0.35f),
-            if (sunOnLeft) darken(trunk, 0.35f) else lighten(trunk, 0.1f), Shader.TileMode.CLAMP,
+            if (sunOnLeft) lighten(trunk, 0.14f) else darken(trunk, 0.4f),
+            if (sunOnLeft) darken(trunk, 0.4f) else lighten(trunk, 0.14f), Shader.TileMode.CLAMP,
         )
         c.drawPath(tp, fill)
         shader = null
-        val limb = darken(trunk, 0.15f)
-        for (i in 0 until pads) {
+        if (!small) {
+            line.strokeWidth = max(1f, th * 0.004f)
+            line.color = alpha(darken(trunk, 0.5f), 150)
+            for (i in 0 until 7) {
+                val bx = x + (rnd.nextFloat() - 0.5f) * trunkW * 1.4f
+                c.drawLine(bx, baseY - th * 0.02f, bx + (rnd.nextFloat() - 0.5f) * trunkW * 0.3f, forkY + th * 0.02f, line)
+            }
+        }
+        // Main limbs into the crown, thinning as they go.
+        val limbs = if (small) 2 else 4
+        for (i in 0 until limbs) {
+            val spread = if (limbs == 1) 0f else (i / (limbs - 1f) - 0.5f) * 2f
+            val tx = x + spread * r * 0.7f
+            val ty = cy + r * (0.15f - 0.1f * (1f - abs(spread)))
             var ax = x; var ay = forkY
-            val tx = px[i]; val ty = py[i] + pw[i] * 0.12f
-            val midX = x + (tx - x) * 0.45f; val midY = forkY - (forkY - ty) * 0.75f
             for (s in 1..6) {
-                val t = s / 6f; val it = 1f - t
-                val nx = it * it * x + 2 * it * t * midX + t * t * tx
-                val ny = it * it * forkY + 2 * it * t * midY + t * t * ty
-                line.strokeWidth = max(1f, trunkW * 1.1f * (1f - 0.8f * t))
-                line.color = if (i % 2 == 0) limb else darken(limb, 0.2f)
+                val t = s / 6f
+                val nx = x + (tx - x) * t + sin(t * 3.14f) * spread * r * 0.1f
+                val ny = forkY + (ty - forkY) * t
+                line.strokeWidth = max(1f, trunkW * 1.1f * (1f - 0.75f * t))
+                line.color = darken(trunk, 0.1f + 0.12f * (i % 2))
                 c.drawLine(ax, ay, nx, ny, line)
                 ax = nx; ay = ny
             }
         }
 
-        // Pads from the lowest to the highest so upper ones overlap lower ones.
-        val order = (0 until pads).sortedByDescending { py[it] }
+        // The crown: clumps scattered over a dome, drawn lowest first so higher ones overlap.
+        val clumps = if (small) 7 else (12 + (detail * 5f).toInt()).coerceAtMost(17)
+        val cxs = FloatArray(clumps); val cys = FloatArray(clumps); val crs = FloatArray(clumps)
+        for (i in 0 until clumps) {
+            var dx: Float; var dy: Float
+            do {
+                dx = (rnd.nextFloat() * 2f - 1f)
+                dy = (rnd.nextFloat() * 1.15f - 0.8f)
+            } while (dx * dx + (dy / 0.8f) * (dy / 0.8f) > 1f)
+            cxs[i] = x + dx * r * 0.78f
+            cys[i] = cy + dy * r * 0.8f
+            crs[i] = r * (0.3f + 0.16f * rnd.nextFloat()) * (1f - 0.18f * abs(dx))
+        }
+        val order = (0 until clumps).sortedByDescending { cys[it] }
+        val dabsPer = (if (small) 18 else (46 * detail).toInt().coerceAtLeast(26))
         for (i in order) {
-            val w = pw[i]; val hgt = w * 0.62f
-            // Shadow under the pad, then the leaves.
-            fill.color = alpha(deep, 150)
-            c.drawOval(px[i] - w * 0.5f, py[i] - hgt * 0.1f, px[i] + w * 0.5f, py[i] + hgt * 0.62f, fill)
-            val dabs = (((if (small) 26 else 60) * detail).toInt()).coerceAtLeast(14)
-            val dr = th * (if (small) 0.03f else 0.017f)
-            for (k in 0 until dabs) {
+            val cr = crs[i]; val ccx = cxs[i]; val ccy = cys[i]
+            // Dark body of the clump.
+            fill.color = deep
+            c.drawCircle(ccx, ccy + cr * 0.1f, cr * 0.96f, fill)
+            val dabR = cr * (if (small) 0.34f else 0.2f)
+            for (k in 0 until dabsPer) {
                 val a = rnd.nextFloat() * 6.2832f
-                val d = sqrt(rnd.nextFloat())
-                val dx = cos(a) * d * w * 0.5f
-                val dy = sin(a) * d * hgt * 0.5f
-                // Lighter towards the top of the pad and on the sun's side.
-                val lightness = (0.62f - dy / hgt * 0.9f - sun * dx / w * 0.6f + (rnd.nextFloat() - 0.5f) * 0.2f).coerceIn(0f, 1f)
-                fill.color = jitter(mix(deep, mix(dark, lit, 0.7f), lightness), rnd, 0.12f)
-                c.drawCircle(px[i] + dx, py[i] + dy, dr * (0.7f + rnd.nextFloat() * 0.6f), fill)
+                val d = sqrt(rnd.nextFloat()) * 0.94f
+                val dx = cos(a) * d; val dy = sin(a) * d
+                // Light from above and from the sun's side; the lower rim stays in shadow.
+                val lightness = (0.58f - dy * 0.75f - sun * dx * 0.5f + (rnd.nextFloat() - 0.5f) * 0.28f).coerceIn(0f, 1f)
+                val base = mix(deep, mix(dark, lit, 0.8f), lightness)
+                fill.color = jitter(base, rnd, 0.16f)
+                c.drawCircle(ccx + dx * cr, ccy + dy * cr, dabR * (0.55f + rnd.nextFloat() * 0.7f), fill)
             }
-            // Sunlit leaf tips along the top edge.
-            line.color = mix(lit, Color.WHITE, 0.15f)
-            line.strokeWidth = max(1f, th * 0.005f)
-            repeat((14 * detail).toInt().coerceAtLeast(4)) {
-                val a = -3.14f + rnd.nextFloat() * 3.14f
-                val ex = px[i] + cos(a) * w * 0.48f * (0.7f + rnd.nextFloat() * 0.3f)
-                val ey = py[i] + sin(a) * hgt * 0.5f
-                c.drawLine(ex, ey, ex + (rnd.nextFloat() - 0.5f) * th * 0.02f, ey - th * 0.01f, line)
+            // Ragged rim of single leaves on the upper half.
+            if (!small) {
+                val rim = mix(lit, Color.WHITE, 0.12f)
+                repeat(14) {
+                    val a = -3.14f + rnd.nextFloat() * 3.14f
+                    val px = ccx + cos(a) * cr * (0.92f + rnd.nextFloat() * 0.16f)
+                    val py = ccy + sin(a) * cr * (0.92f + rnd.nextFloat() * 0.16f)
+                    fill.color = jitter(rim, rnd, 0.14f)
+                    c.drawCircle(px, py, dabR * (0.3f + rnd.nextFloat() * 0.3f), fill)
+                }
             }
         }
     }
