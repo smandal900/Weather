@@ -14,7 +14,8 @@ import com.skymood.domain.TimeOfDay
  */
 class SkyGradient {
 
-    private val paint = Paint()
+    // Dithering hides the faint horizontal banding a long, smooth gradient would otherwise show.
+    private val paint = Paint(Paint.DITHER_FLAG)
     private var key = -1
     private var keyWidth = 0
     private var keyHeight = 0

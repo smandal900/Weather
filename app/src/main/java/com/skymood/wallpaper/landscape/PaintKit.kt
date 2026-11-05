@@ -280,53 +280,59 @@ class PaintKit(val width: Int, val height: Int, val l: Lighting) {
         shader = LinearGradient(0f, minY, 0f, bottom, lit, dark, Shader.TileMode.CLAMP)
         c.drawPath(body, fill)
         shader = null
-        val step = 5f * unit
-        val depth = h * 0.05f
-        val q = scratch
-        x = ridge.left
-        while (x < w * 1.1f) {
-            val x1 = x + step
-            val y0 = ridge.yAt(x); val y1 = ridge.yAt(x1)
-            val dy = y1 - y0
-            val steep = min(1f, abs(dy) / (step * 1.1f))
-            if (steep > 0.12f) {
-                val shadow = if (sunOnLeft) dy > 0f else dy < 0f
-                val base = if (shadow) Color.BLACK else Color.WHITE
-                val a = if (shadow) 34 else 18
-                for (k in 0 until 6) {
-                    val d = depth * (1f - k * 0.15f) * (0.4f + steep)
-                    fill.color = alpha(base, (a * steep).toInt())
-                    q.rewind(); q.moveTo(x, y0); q.lineTo(x1, y1); q.lineTo(x1, y1 + d); q.lineTo(x, y0 + d); q.close()
-                    c.drawPath(q, fill)
+        // Faces are shaded with one smooth path per layer (a path per slice leaves hairline seams
+        // that look like scratches), with soft, fading depth rather than hard grooves.
+        val step = 6f * unit
+        val depth = h * 0.06f
+        val shadowPath = Path(); val lightPath = Path()
+        for (k in 0 until 6) {
+            shadowPath.rewind(); lightPath.rewind()
+            val f = 1f - k * 0.15f
+            x = ridge.left
+            // Smooth the steepness along the ridge so neighbouring slices fade into each other.
+            var prevD = 0f
+            while (x < w * 1.1f) {
+                val x1 = x + step
+                val y0 = ridge.yAt(x); val y1 = ridge.yAt(x1)
+                val dy = y1 - y0
+                val steep = min(1f, abs(dy) / (step * 1.1f))
+                val d = prevD * 0.5f + depth * f * (0.3f + 0.4f * steep) * 0.55f * (if (steep > 0.1f) 1f else 0f)
+                prevD = d
+                if (d > 0.5f) {
+                    val wide = ridge.yAt(x + step * 5f) - ridge.yAt(x - step * 5f)
+                    val shadow = if (sunOnLeft) wide > 0f else wide < 0f
+                    val p = if (shadow) shadowPath else lightPath
+                    p.moveTo(x, y0); p.lineTo(x1 + 0.6f, y1); p.lineTo(x1 + 0.6f, y1 + d); p.lineTo(x, y0 + d); p.close()
                 }
+                x = x1
             }
-            x = x1
-        }
-        repeat((220 * unit).toInt().coerceAtLeast(60)) {
-            val gx = ridge.left + rnd.nextFloat() * w * 1.2f
-            val gy = ridge.yAt(gx)
-            val len = h * (0.03f + rnd.nextFloat() * 0.09f)
-            line.strokeWidth = (1f + rnd.nextFloat() * 1.5f) * unit
-            line.color = alpha(Color.BLACK, 22 + rnd.nextInt(28))
-            c.drawLine(gx, gy + 2f, gx + (rnd.nextFloat() - 0.5f) * len * 0.5f, gy + len, line)
+            fill.color = alpha(Color.BLACK, 14); c.drawPath(shadowPath, fill)
+            fill.color = alpha(Color.WHITE, 4); c.drawPath(lightPath, fill)
         }
         if (snowLine != null) {
             val snowLit = l.shade(Lighting.SNOW)
             val snowShade = mix(snowLit, 0xFF7A90B8.toInt(), 0.5f)
+            val litP = Path(); val shadeP = Path()
             x = ridge.left
+            val sstep = step * 0.8f
+            var prevD = 0f
             while (x < w * 1.1f) {
-                val x1 = x + step * 2f
+                val x1 = x + sstep
                 val y0 = ridge.yAt(x); val y1 = ridge.yAt(x1)
                 val top = min(y0, y1)
                 if (top < snowLine) {
-                    val shadow = if (sunOnLeft) y1 > y0 else y1 < y0
-                    val d = ((snowLine - top) * 0.75f + 3f) * (0.65f + rnd.nextFloat() * 0.7f)
-                    fill.color = if (shadow) snowShade else snowLit
-                    q.rewind(); q.moveTo(x, y0); q.lineTo(x1, y1); q.lineTo(x1, y1 + d); q.lineTo(x, y0 + d); q.close()
-                    c.drawPath(q, fill)
+                    val wide = ridge.yAt(x + step * 5f) - ridge.yAt(x - step * 5f)
+                    val shadow = if (sunOnLeft) wide > 0f else wide < 0f
+                    // Depth follows the peak height and is smoothed, so the snow edge flows instead of striping.
+                    val d = (((snowLine - top) * 0.75f + 3f) * 0.8f) * 0.3f + prevD * 0.7f
+                    prevD = d
+                    val p = if (shadow) shadeP else litP
+                    p.moveTo(x, y0); p.lineTo(x1 + 0.6f, y1); p.lineTo(x1 + 0.6f, y1 + d); p.lineTo(x, y0 + d); p.close()
                 }
                 x = x1
             }
+            fill.color = snowShade; c.drawPath(shadeP, fill)
+            fill.color = snowLit; c.drawPath(litP, fill)
         }
     }
 
