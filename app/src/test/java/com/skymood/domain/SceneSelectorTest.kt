@@ -57,7 +57,7 @@ class SceneSelectorTest {
             val spec = SceneSelector.select(null, Settings(previewOverride = s, timeOverride = t, landscape = l), 12)
             seen += Triple(spec.timeOfDay, spec.landscape, spec.type)
         }
-        assertEquals(480, seen.size)
+        assertEquals(TimeOfDay.entries.size * LandscapeType.entries.size * SceneType.entries.size, seen.size)
     }
 
     @Test

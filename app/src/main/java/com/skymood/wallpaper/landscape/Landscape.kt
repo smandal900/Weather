@@ -204,6 +204,7 @@ abstract class Landscape {
             LandscapeType.WATERFALL -> WaterfallLandscape()
             LandscapeType.SNOWY_PEAKS -> SnowyPeaksLandscape()
             LandscapeType.COUNTRYSIDE_VILLAGE -> VillageLandscape()
+            LandscapeType.LIGHTHOUSE -> LighthouseLandscape()
         }
     }
 }
