@@ -182,7 +182,7 @@ class MountainLandscape : PaintedLandscape() {
 
 /** Gentle rolling hills: patchwork fields in the distance, scattered leafy trees, big oaks in front. */
 class HillLandscape : PaintedLandscape() {
-    override val layers = arrayOf(PaintLayer(0.5f, 0.86f, 0.1f), PaintLayer(0.6f, 1f, 0.5f), PaintLayer(0.55f, 1f, 1f))
+    override val layers = arrayOf(PaintLayer(0.5f, 0.86f, 0.1f), PaintLayer(0.6f, 1f, 0.5f), PaintLayer(0.32f, 1f, 1f))
 
     private var slots: List<GroundSlot> = emptyList()
     private var slotsFor = 0
@@ -259,7 +259,7 @@ class HillLandscape : PaintedLandscape() {
 
 /** A meadow with grass that sways in the wind, in front of a leafy tree line and a big oak. */
 class GrassFieldLandscape : PaintedLandscape() {
-    override val layers = arrayOf(PaintLayer(0.55f, 0.8f, 0.15f), PaintLayer(0.62f, 1f, 0.6f))
+    override val layers = arrayOf(PaintLayer(0.55f, 0.8f, 0.15f), PaintLayer(0.30f, 1f, 0.6f))
 
     private var slots: List<GroundSlot> = emptyList()
     private var slotsFor = 0

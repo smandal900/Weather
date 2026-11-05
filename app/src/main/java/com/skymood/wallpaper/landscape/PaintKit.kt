@@ -235,66 +235,91 @@ class PaintKit(val width: Int, val height: Int, val l: Lighting) {
     }
 
     /**
-     * A leafy tree: a forked trunk under a crown of overlapping leaf clusters. Each cluster is a
-     * dark base with a lighter blob shifted towards the sun, so the crown reads as lit from one
-     * side, with sunlit dabs of single leaves along the top edge.
+     * A spreading leafy tree: a trunk that forks into visible limbs, carrying several flat, layered
+     * pads of leaves (lit on top and on the sun's side, dark beneath, with the sky showing between
+     * pads), like an acacia or a rain tree rather than a round ball.
      */
     fun broadleaf(
         c: Canvas, x: Float, baseY: Float, th: Float, lit: Int, dark: Int, trunk: Int,
         rnd: Random, detail: Float,
     ) {
-        val r = th * 0.34f
-        val cy = baseY - th + r * 1.05f
-        val trunkW = th * 0.028f
+        val deep = darken(dark, 0.35f)
+        val crownW = th * 0.95f
+        val crownCy = baseY - th * 0.6f
+        val forkY = baseY - th * 0.3f
+        val small = th < 140f * unit
+
+        // Pads first (positions), so the limbs can be drawn up to them.
+        val pads = if (small) 5 else (7 + (detail * 4f).toInt()).coerceAtMost(11)
+        val px = FloatArray(pads); val py = FloatArray(pads); val pw = FloatArray(pads)
+        for (i in 0 until pads) {
+            val u = if (pads == 1) 0.5f else i / (pads - 1f)
+            val spread = (u - 0.5f) * 2f // -1..1
+            px[i] = x + spread * crownW * 0.42f + (rnd.nextFloat() - 0.5f) * crownW * 0.06f
+            // Centre pads stand higher than the outer ones, giving the domed umbrella shape.
+            py[i] = crownCy - (1f - spread * spread) * th * 0.14f + (rnd.nextFloat() - 0.4f) * th * 0.05f
+            pw[i] = crownW * (0.46f + 0.14f * rnd.nextFloat()) * (1f - 0.22f * abs(spread))
+        }
+
+        // Trunk and limbs.
+        val trunkW = th * 0.03f
         val tp = Path()
-        tp.moveTo(x - trunkW, baseY)
-        tp.lineTo(x - trunkW * 0.55f, cy + r * 0.3f)
-        tp.lineTo(x + trunkW * 0.55f, cy + r * 0.3f)
-        tp.lineTo(x + trunkW, baseY)
+        tp.moveTo(x - trunkW * 1.15f, baseY)
+        tp.quadTo(x - trunkW * 0.5f, baseY - th * 0.15f, x - trunkW * 0.7f, forkY)
+        tp.lineTo(x + trunkW * 0.7f, forkY)
+        tp.quadTo(x + trunkW * 0.5f, baseY - th * 0.15f, x + trunkW * 1.15f, baseY)
         tp.close()
         shader = LinearGradient(
             x - trunkW, 0f, x + trunkW, 0f,
             if (sunOnLeft) lighten(trunk, 0.1f) else darken(trunk, 0.35f),
-            if (sunOnLeft) darken(trunk, 0.35f) else lighten(trunk, 0.1f),
-            Shader.TileMode.CLAMP,
+            if (sunOnLeft) darken(trunk, 0.35f) else lighten(trunk, 0.1f), Shader.TileMode.CLAMP,
         )
         c.drawPath(tp, fill)
         shader = null
-        line.color = darken(trunk, 0.2f)
-        line.strokeWidth = max(1f, th * 0.012f)
-        for (i in 0 until 4) {
-            val a = -0.9f + i * 0.6f
-            c.drawLine(x, cy + r * 0.45f, x + sin(a) * r * 0.8f, cy - cos(a) * r * 0.45f, line)
+        val limb = darken(trunk, 0.15f)
+        for (i in 0 until pads) {
+            var ax = x; var ay = forkY
+            val tx = px[i]; val ty = py[i] + pw[i] * 0.12f
+            val midX = x + (tx - x) * 0.45f; val midY = forkY - (forkY - ty) * 0.75f
+            for (s in 1..6) {
+                val t = s / 6f; val it = 1f - t
+                val nx = it * it * x + 2 * it * t * midX + t * t * tx
+                val ny = it * it * forkY + 2 * it * t * midY + t * t * ty
+                line.strokeWidth = max(1f, trunkW * 1.1f * (1f - 0.8f * t))
+                line.color = if (i % 2 == 0) limb else darken(limb, 0.2f)
+                c.drawLine(ax, ay, nx, ny, line)
+                ax = nx; ay = ny
+            }
         }
-        val n = (70 * detail).toInt().coerceAtLeast(16)
-        val bx = FloatArray(n); val by = FloatArray(n); val br = FloatArray(n)
-        for (i in 0 until n) {
-            val a = rnd.nextFloat() * 6.2832f
-            val d = sqrt(rnd.nextFloat())
-            bx[i] = x + cos(a) * d * r * 0.85f
-            by[i] = cy + sin(a) * d * r * 0.72f
-            br[i] = r * (0.2f + rnd.nextFloat() * 0.2f)
-        }
-        val order = (0 until n).sortedByDescending { by[it] }
-        val deep = darken(dark, 0.3f)
+
+        // Pads from the lowest to the highest so upper ones overlap lower ones.
+        val order = (0 until pads).sortedByDescending { py[it] }
         for (i in order) {
-            val lightness = (0.5f - (by[i] - cy) / (2f * r) * 0.9f - sun * (bx[i] - x) / (2f * r) * 0.9f +
-                (rnd.nextFloat() - 0.5f) * 0.18f).coerceIn(0f, 1f)
-            val base = jitter(mix(deep, mix(dark, lit, 0.6f), lightness), rnd, 0.1f)
-            fill.color = base
-            c.drawCircle(bx[i], by[i], br[i], fill)
-            fill.color = lighten(base, 0.12f + 0.14f * lightness)
-            c.drawCircle(bx[i] + sun * br[i] * 0.22f * -1f, by[i] - br[i] * 0.2f, br[i] * 0.66f, fill)
-        }
-        // Single sunlit leaves along the upper rim.
-        val leaf = mix(lit, Color.WHITE, 0.12f)
-        line.color = leaf
-        line.strokeWidth = max(1f, th * 0.006f)
-        repeat((60 * detail).toInt()) {
-            val a = -3.14f + rnd.nextFloat() * 3.14f
-            val px = x + cos(a) * r * (0.78f + rnd.nextFloat() * 0.2f)
-            val py = cy + sin(a) * r * 0.7f * (0.8f + rnd.nextFloat() * 0.2f)
-            c.drawLine(px, py, px + (rnd.nextFloat() - 0.5f) * th * 0.03f, py - th * 0.012f, line)
+            val w = pw[i]; val hgt = w * 0.62f
+            // Shadow under the pad, then the leaves.
+            fill.color = alpha(deep, 150)
+            c.drawOval(px[i] - w * 0.5f, py[i] - hgt * 0.1f, px[i] + w * 0.5f, py[i] + hgt * 0.62f, fill)
+            val dabs = (((if (small) 26 else 60) * detail).toInt()).coerceAtLeast(14)
+            val dr = th * (if (small) 0.03f else 0.017f)
+            for (k in 0 until dabs) {
+                val a = rnd.nextFloat() * 6.2832f
+                val d = sqrt(rnd.nextFloat())
+                val dx = cos(a) * d * w * 0.5f
+                val dy = sin(a) * d * hgt * 0.5f
+                // Lighter towards the top of the pad and on the sun's side.
+                val lightness = (0.62f - dy / hgt * 0.9f - sun * dx / w * 0.6f + (rnd.nextFloat() - 0.5f) * 0.2f).coerceIn(0f, 1f)
+                fill.color = jitter(mix(deep, mix(dark, lit, 0.7f), lightness), rnd, 0.12f)
+                c.drawCircle(px[i] + dx, py[i] + dy, dr * (0.7f + rnd.nextFloat() * 0.6f), fill)
+            }
+            // Sunlit leaf tips along the top edge.
+            line.color = mix(lit, Color.WHITE, 0.15f)
+            line.strokeWidth = max(1f, th * 0.005f)
+            repeat((14 * detail).toInt().coerceAtLeast(4)) {
+                val a = -3.14f + rnd.nextFloat() * 3.14f
+                val ex = px[i] + cos(a) * w * 0.48f * (0.7f + rnd.nextFloat() * 0.3f)
+                val ey = py[i] + sin(a) * hgt * 0.5f
+                c.drawLine(ex, ey, ex + (rnd.nextFloat() - 0.5f) * th * 0.02f, ey - th * 0.01f, line)
+            }
         }
     }
 
