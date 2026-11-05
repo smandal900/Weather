@@ -126,61 +126,6 @@ class CitySkylineLandscape : PaintedLandscape() {
     }
 }
 
-/** A hill station: colourful cottages stacked up a pine-covered slope under misty blue mountains. */
-class HillStationLandscape : PaintedLandscape() {
-    override val layers = arrayOf(PaintLayer(0.30f, 0.62f, 0.08f), PaintLayer(0.36f, 0.92f, 0.5f), PaintLayer(0.60f, 1f, 1f))
-
-    override fun build() {}
-
-    override fun paintAll(k: PaintKit) = PaintResult(arrayOf(peaks(k), slope(k), edge(k)))
-
-    private fun peaks(k: PaintKit): Bitmap? {
-        val (c, bmp) = k.newLayer(layers[0]) ?: return null
-        val l = k.l; val h = k.h
-        val rnd = Random(171)
-        k.mountain(c, Ridge(k.width, h * 0.48f, h * 0.14f, true, 17), h * 0.62f,
-            l.distant(l.ground(0xFF8EA2BC.toInt()), 0.4f), l.distant(l.ground(0xFF5C7088.toInt()), 0.4f), rnd)
-        k.haze(c, h * 0.5f, h * 0.62f, 0.5f)
-        return bmp
-    }
-
-    private fun slope(k: PaintKit): Bitmap? {
-        val (c, bmp) = k.newLayer(layers[1]) ?: return null
-        val l = k.l; val h = k.h; val w = k.w
-        val rnd = Random(172)
-        val ridge = Ridge(k.width, h * 0.54f, h * 0.07f, false, 18)
-        k.hill(c, ridge, h * 0.92f, l.ground(0xFF4E8A44.toInt()), l.ground(0xFF2A5A2C.toInt()), rnd, 120)
-        val litP = l.foliage(0xFF3C7A4C.toInt()); val darkP = l.foliage(0xFF1C3A2A.toInt()); val trunk = l.shade(0xFF3A2C22.toInt())
-        val walls = intArrayOf(0xFFF0E4CF.toInt(), 0xFFE9C9A0.toInt(), 0xFFCFE0E8.toInt(), 0xFFF0D4C8.toInt(), 0xFFE0E8C8.toInt(), 0xFFF2DC8A.toInt())
-        val roofs = intArrayOf(0xFFA4483A.toInt(), 0xFF2F5C8A.toInt(), 0xFF3C6A52.toInt(), 0xFF8A4B2A.toInt(), 0xFFB5412F.toInt())
-        for (row in 0 until 4) {
-            val off = h * (0.012f + 0.045f * row)
-            var x = w * (0.0f + 0.04f * rnd.nextFloat())
-            while (x < w * 1.02f) {
-                val hw = w * (0.026f + 0.006f * row + 0.008f * rnd.nextFloat())
-                val by = ridge.yAt(x) + off + hw * 0.9f
-                if (rnd.nextFloat() < 0.82f) k.cottage(c, x, by, hw, hw * (1.0f + 0.3f * rnd.nextFloat()), walls[rnd.nextInt(walls.size)], roofs[rnd.nextInt(roofs.size)])
-                else { val th = h * (0.04f + 0.02f * row); k.conifer(c, x, by + th * 0.1f, th, k.jitter(litP, rnd, 0.2f), darkP, trunk, rnd, 0.3f) }
-                x += hw * (2.2f + 0.8f * rnd.nextFloat())
-            }
-        }
-        k.haze(c, h * 0.56f, h * 0.7f, 0.3f)
-        return bmp
-    }
-
-    private fun edge(k: PaintKit): Bitmap? {
-        val (c, bmp) = k.newLayer(layers[2]) ?: return null
-        val l = k.l; val h = k.h; val w = k.w
-        val rnd = Random(173)
-        val litP = l.foliage(0xFF4F8A4A.toInt()); val darkP = l.foliage(0xFF183322.toInt()); val trunk = l.shade(0xFF4A3628.toInt())
-        for (s in floatArrayOf(-0.03f, 0.06f, 0.95f, 1.04f)) {
-            val x = w * s; val th = h * (0.24f + 0.08f * rnd.nextFloat())
-            k.conifer(c, x, h * 0.99f, th, k.jitter(litP, rnd, 0.14f), darkP, trunk, rnd, 1f)
-        }
-        return bmp
-    }
-}
-
 /** A hilltop temple with a curved shikhara tower, a long stairway, flags, and diyas that glow after dark. */
 class TempleHilltopLandscape : PaintedLandscape() {
     override val layers = arrayOf(PaintLayer(0.34f, 0.70f, 0.08f), PaintLayer(0.26f, 0.84f, 0.5f), PaintLayer(0.78f, 1f, 1f))
