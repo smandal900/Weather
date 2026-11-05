@@ -653,45 +653,74 @@ class RiverValleyLandscape : PaintedLandscape() {
     }
 }
 
-/** A waterfall pouring between two textured cliffs into a misty pool. */
+/**
+ * A tall rock wall with a waterfall pouring over a notch in its top. The water falls in two
+ * steps, foaming where it hits each ledge, into a misty pool with ripples and flying spray,
+ * with boulders, ferns and trees around it.
+ */
 class WaterfallLandscape : PaintedLandscape() {
-    override val layers = arrayOf(PaintLayer(0.36f, 0.72f, 0.1f), PaintLayer(0.42f, 0.88f, 0.8f))
+    override val layers = arrayOf(PaintLayer(0.36f, 0.72f, 0.1f), PaintLayer(0.36f, 0.9f, 0.5f), PaintLayer(0.6f, 1f, 1f))
 
     private var slots: List<GroundSlot> = emptyList()
     private var slotsFor = 0
     override fun groundSlots(): List<GroundSlot> {
         if (slotsFor != width * 31 + height) {
             slotsFor = width * 31 + height
-            slots = makeSlots(width.toFloat(), height.toFloat())
+            val h = height.toFloat()
+            slots = listOf(GroundSlot(Species.DUCK, 0.2f, 0.8f, GroundY { _ -> h * 0.93f }, 1.3f, 2))
         }
         return slots
     }
 
-    private fun makeSlots(w: Float, h: Float): List<GroundSlot> {
-        return listOf(GroundSlot(Species.DUCK, 0.2f, 0.8f, GroundY { _ -> h * 0.93f }, 1.3f, 2))
+    private val pool = Water()
+    private val fallPath = Path()
+    private val fallPaint = Paint()
+    private val thinPaint = stroke()
+    private val thickPaint = stroke()
+    private val foamPaint = fillPaint()
+    private val mistPaint = fillPaint()
+    private val ripplePaint = stroke()
+    private val sprayPaint = fillPaint()
+    private val su = FloatArray(STREAKS); private val sy = FloatArray(STREAKS)
+    private val sl = FloatArray(STREAKS); private val sv = FloatArray(STREAKS)
+    private val thinLines = FloatArray(STREAKS * 4)
+    private val thickLines = FloatArray(STREAKS * 4)
+    private var lipY = 0f; private var baseY = 0f; private var cx = 0f; private var unitPx = 1f
+
+    private fun fallCx(t: Float) = cx + width * 0.012f * sin(t * 3f)
+    private fun fallHalf(t: Float) = width * (0.045f + 0.04f * t.pow(1.3f))
+    private fun sm(e0: Float, e1: Float, x: Float): Float {
+        val t = ((x - e0) / (e1 - e0)).coerceIn(0f, 1f)
+        return t * t * (3f - 2f * t)
     }
 
-    private val pool = Water()
-    private val fallPaint = Paint()
-    private val streakPaint = stroke()
-    private val mistPaint = fillPaint()
-    private val sx = FloatArray(STREAKS); private val sy = FloatArray(STREAKS)
-    private val sl = FloatArray(STREAKS); private val sv = FloatArray(STREAKS)
-    private val streakLines = FloatArray(STREAKS * 4)
-    private var fallLeft = 0f; private var fallRight = 0f; private var fallTop = 0f; private var poolTop = 0f
-
     override fun build() {
-        val w = width.toFloat(); val h = height.toFloat(); val unit = w / 1080f
-        fallLeft = w * 0.42f; fallRight = w * 0.56f; fallTop = h * 0.6f; poolTop = h * 0.86f
-        pool.build(-w * 0.1f, w * 1.1f, poolTop, h, unit)
+        val w = width.toFloat(); val h = height.toFloat(); unitPx = w / 1080f
+        lipY = h * 0.55f; baseY = h * 0.86f; cx = w * 0.5f
+        pool.build(-w * 0.1f, w * 1.1f, baseY, h, unitPx)
+        fallPath.rewind()
+        val n = 24
+        for (i in 0..n) {
+            val t = i / n.toFloat()
+            val y = lipY + (baseY - lipY) * t
+            val x = fallCx(t) - fallHalf(t) + sin(t * 17f) * w * 0.003f
+            if (i == 0) fallPath.moveTo(x, y) else fallPath.lineTo(x, y)
+        }
+        for (i in n downTo 0) {
+            val t = i / n.toFloat()
+            val y = lipY + (baseY - lipY) * t
+            fallPath.lineTo(fallCx(t) + fallHalf(t) + sin(t * 13f + 2f) * w * 0.003f, y)
+        }
+        fallPath.close()
         val rnd = Random(51)
         for (i in 0 until STREAKS) {
-            sx[i] = fallLeft + rnd.nextFloat() * (fallRight - fallLeft)
-            sy[i] = fallTop + rnd.nextFloat() * (poolTop - fallTop)
-            sl[i] = h * (0.02f + rnd.nextFloat() * 0.05f)
-            sv[i] = h * (0.5f + rnd.nextFloat() * 0.4f)
+            su[i] = rnd.nextFloat(); sy[i] = rnd.nextFloat()
+            sl[i] = 0.04f + rnd.nextFloat() * 0.12f
+            sv[i] = 0.5f + rnd.nextFloat() * 0.6f
         }
-        streakPaint.strokeWidth = 3f * unit.coerceAtLeast(0.6f)
+        thinPaint.strokeWidth = 2f * unitPx.coerceAtLeast(0.6f)
+        thickPaint.strokeWidth = 6f * unitPx.coerceAtLeast(0.6f)
+        ripplePaint.strokeWidth = 2f * unitPx.coerceAtLeast(0.6f)
         mistPaint.shader = RadialGradient(0f, 0f, 1f, intArrayOf(0xAAFFFFFF.toInt(), 0x00FFFFFF), floatArrayOf(0f, 1f), Shader.TileMode.CLAMP)
     }
 
@@ -699,165 +728,251 @@ class WaterfallLandscape : PaintedLandscape() {
         val l = lighting
         pool.applyLighting(l, DEEP_LAKE, width)
         fallPaint.shader = LinearGradient(
-            0f, fallTop, 0f, poolTop, l.shade(0xFFE8F4FA.toInt()), l.shade(0xFFB9D7E6.toInt()), Shader.TileMode.CLAMP,
+            0f, lipY, 0f, baseY,
+            intArrayOf(l.shade(0xFFDDEEF4.toInt()), l.shade(0xFFEAF5F8.toInt()), l.shade(0xFFFFFFFF.toInt())),
+            floatArrayOf(0f, 0.55f, 1f), Shader.TileMode.CLAMP,
         )
-        streakPaint.color = l.shade(0xFFFFFFFF.toInt())
+        thinPaint.color = l.shade(0xFFFFFFFF.toInt())
+        thickPaint.color = l.shade(0xFFCFE6EE.toInt())
+        foamPaint.color = l.shade(0xFFFFFFFF.toInt())
+        ripplePaint.color = l.shade(0xFFFFFFFF.toInt())
+        sprayPaint.color = l.shade(0xFFFFFFFF.toInt())
     }
 
-    override fun paintAll(k: PaintKit) = PaintResult(arrayOf(ridge(k), cliffs(k)))
+    override fun paintAll(k: PaintKit) = PaintResult(arrayOf(farRidge(k), wall(k), foreground(k)))
 
-    private fun ridge(k: PaintKit): Bitmap? {
+    private fun farRidge(k: PaintKit): Bitmap? {
         val (c, bmp) = k.newLayer(layers[0]) ?: return null
         val l = k.l; val h = k.h
         val rnd = Random(101)
-        val r = Ridge(k.width, h * 0.62f, h * 0.14f, true, 50)
-        k.mountain(c, r, h * 0.72f, l.distant(l.ground(0xFF6D8096.toInt()), 0.35f), l.distant(l.ground(0xFF4A5E52.toInt()), 0.3f), rnd)
-        val lit = l.distant(l.foliage(0xFF3F7550.toInt()), 0.3f); val dark = l.distant(l.foliage(0xFF1C3A2A.toInt()), 0.3f)
+        val r = Ridge(k.width, h * 0.6f, h * 0.12f, true, 50)
+        k.mountain(c, r, h * 0.72f, l.distant(l.ground(0xFF6D8096.toInt()), 0.38f), l.distant(l.ground(0xFF4A5E52.toInt()), 0.33f), rnd)
+        val lit = l.distant(l.foliage(0xFF3F7550.toInt()), 0.35f); val dark = l.distant(l.foliage(0xFF1C3A2A.toInt()), 0.35f)
         var x = -k.margin
         while (x < k.w + k.margin) {
-            val th = h * (0.025f + rnd.nextFloat() * 0.03f)
-            k.conifer(c, x, r.yAt(x) + th * 0.5f, th, k.jitter(lit, rnd, 0.2f), dark, l.shade(0xFF33261C.toInt()), rnd, 0.3f)
-            x += (14f + rnd.nextFloat() * 14f) * k.unit
+            val th = h * (0.02f + rnd.nextFloat() * 0.025f)
+            k.conifer(c, x, r.yAt(x) + th * 0.5f, th, k.jitter(lit, rnd, 0.2f), dark, l.shade(0xFF33261C.toInt()), rnd, 0.25f)
+            x += (13f + rnd.nextFloat() * 12f) * k.unit
         }
-        k.haze(c, h * 0.5f, h * 0.7f, 0.35f)
+        k.haze(c, h * 0.48f, h * 0.7f, 0.4f)
         return bmp
     }
 
-    private fun cliffs(k: PaintKit): Bitmap? {
+    private fun wall(k: PaintKit): Bitmap? {
         val (c, bmp) = k.newLayer(layers[1]) ?: return null
         val l = k.l; val h = k.h; val w = k.w
         val rnd = Random(102)
-        val fl = w * 0.42f; val fr = w * 0.56f; val ft = h * 0.6f; val pt = h * 0.86f
-        val left = Path()
-        left.moveTo(-w * 0.1f, h * 0.58f)
-        jag(left, -w * 0.1f, h * 0.58f, w * 0.2f, h * 0.57f, rnd, h * 0.012f)
-        jag(left, w * 0.2f, h * 0.57f, fl + w * 0.01f, ft, rnd, h * 0.014f)
-        jag(left, fl + w * 0.01f, ft, fl, h * 0.7f, rnd, h * 0.008f, 6)
-        jag(left, fl, h * 0.7f, fl + w * 0.015f, pt, rnd, h * 0.008f, 8)
-        left.lineTo(-w * 0.1f, pt); left.close()
-        val right = Path()
-        right.moveTo(w * 1.1f, h * 0.56f)
-        jag(right, w * 1.1f, h * 0.56f, w * 0.8f, h * 0.565f, rnd, h * 0.012f)
-        jag(right, w * 0.8f, h * 0.565f, fr - w * 0.01f, ft, rnd, h * 0.014f)
-        jag(right, fr - w * 0.01f, ft, fr, h * 0.72f, rnd, h * 0.008f, 6)
-        jag(right, fr, h * 0.72f, fr - w * 0.01f, pt, rnd, h * 0.008f, 8)
-        right.lineTo(w * 1.1f, pt); right.close()
-        val rock = l.ground(0xFF6A6358.toInt())
-        for (isLeft in booleanArrayOf(true, false)) {
-            val poly = if (isLeft) left else right
-            val facingLit = isLeft != k.sunOnLeft
-            val x0 = if (isLeft) -w * 0.1f else fr
-            val x1 = if (isLeft) fl + w * 0.02f else w * 1.1f
-            c.save()
-            c.clipPath(poly)
-            val inner = if (facingLit) k.lighten(rock, 0.2f) else k.darken(rock, 0.35f)
-            val outer = k.darken(rock, 0.1f)
-            k.shader = LinearGradient(if (isLeft) x1 else x0, 0f, if (isLeft) x0 else x1, 0f, inner, outer, Shader.TileMode.CLAMP)
-            c.drawRect(x0, h * 0.5f, x1, pt, k.fill)
-            k.shader = null
-            // Strata: slightly tilted bands with a dark crack and a light lip under each.
-            var y = h * 0.52f
-            while (y < pt) {
-                val tilt = (rnd.nextFloat() - 0.5f) * h * 0.012f
-                k.line.strokeWidth = (1.2f + rnd.nextFloat() * 1.8f) * k.unit
-                k.line.color = k.alpha(Color.BLACK, 45)
-                c.drawLine(x0, y, x1, y + tilt, k.line)
-                k.line.color = k.alpha(Color.WHITE, 22)
-                c.drawLine(x0, y + 3f * k.unit, x1, y + tilt + 3f * k.unit, k.line)
-                y += h * (0.008f + rnd.nextFloat() * 0.014f)
-            }
-            repeat(40) {
-                val cx = x0 + rnd.nextFloat() * (x1 - x0)
-                val cy = h * 0.55f + rnd.nextFloat() * (pt - h * 0.55f)
-                k.line.strokeWidth = (1f + rnd.nextFloat() * 1.5f) * k.unit
-                k.line.color = k.alpha(Color.BLACK, 35)
-                c.drawLine(cx, cy, cx + (rnd.nextFloat() - 0.5f) * h * 0.01f, cy + h * (0.015f + 0.04f * rnd.nextFloat()), k.line)
-            }
-            // Moss and ferns clinging to the rock.
-            repeat(46) {
-                val cx = x0 + rnd.nextFloat() * (x1 - x0)
-                val cy = h * 0.58f + rnd.nextFloat() * (pt - h * 0.58f)
-                k.fill.color = k.alpha(l.foliage(if (rnd.nextBoolean()) 0xFF4E7A33.toInt() else 0xFF35602F.toInt()), 150)
-                c.drawCircle(cx, cy, (3f + rnd.nextFloat() * 8f) * k.unit, k.fill)
-            }
-            // A wet, dark band beside the falling water.
-            val wet = if (isLeft) fl else fr
-            k.shader = LinearGradient(wet, 0f, wet + (if (isLeft) -1f else 1f) * w * 0.05f, 0f, k.alpha(Color.BLACK, 90), 0, Shader.TileMode.CLAMP)
-            c.drawRect(min(wet, wet + (if (isLeft) -1f else 1f) * w * 0.05f), ft, max(wet, wet + (if (isLeft) -1f else 1f) * w * 0.05f), pt, k.fill)
-            k.shader = null
-            c.restore()
+        val lip = h * 0.55f; val mid = w * 0.5f; val bottom = h * 0.9f
+        val rid = Ridge(k.width, h * 0.5f, h * 0.05f, true, 60)
+        fun topY(x: Float): Float {
+            val f = 1f - sm(w * 0.035f, w * 0.17f, abs(x - mid))
+            return rid.yAt(x) * (1f - f) + (lip + h * 0.004f) * f
         }
-        // Trees along the cliff tops and bushes on the ledges.
-        val lit = l.foliage(0xFF4C8A4A.toInt()); val dark = l.foliage(0xFF1C3A2A.toInt())
+        val body = Path()
+        body.moveTo(-k.margin, bottom)
         var x = -k.margin
-        while (x < fl - w * 0.02f) {
-            val gy = if (x < w * 0.2f) h * 0.58f + (x + w * 0.1f) / (w * 0.3f) * -h * 0.01f else h * 0.57f + (x - w * 0.2f) / (fl - w * 0.2f) * h * 0.03f
-            val th = h * (0.05f + rnd.nextFloat() * 0.05f)
-            k.conifer(c, x, gy + th * 0.1f, th, k.jitter(lit, rnd, 0.16f), dark, l.shade(0xFF3A2C22.toInt()), rnd, 0.7f)
-            x += (18f + rnd.nextFloat() * 16f) * k.unit
+        while (x <= w + k.margin) { body.lineTo(x, topY(x)); x += 6f * k.unit }
+        body.lineTo(w + k.margin, bottom)
+        body.close()
+        val rock = l.ground(0xFF7A6E60.toInt())
+        c.save()
+        c.clipPath(body)
+        k.shader = LinearGradient(0f, h * 0.45f, 0f, bottom, rock, k.darken(rock, 0.55f), Shader.TileMode.CLAMP)
+        c.drawRect(-k.margin, h * 0.4f, w + k.margin, bottom, k.fill)
+        k.shader = null
+        // Light from the sun's side.
+        k.shader = LinearGradient(
+            if (k.sunOnLeft) 0f else w, 0f, if (k.sunOnLeft) w else 0f, 0f, k.alpha(Color.WHITE, 55), 0, Shader.TileMode.CLAMP,
+        )
+        c.drawRect(-k.margin, h * 0.4f, w + k.margin, bottom, k.fill)
+        k.shader = null
+        // Columns of rock: vertical bands that are slightly lighter or darker.
+        repeat(46) {
+            val bx = -k.margin + rnd.nextFloat() * (w + 2 * k.margin)
+            val bw = w * (0.01f + 0.03f * rnd.nextFloat())
+            k.fill.color = k.alpha(if (rnd.nextBoolean()) Color.BLACK else Color.WHITE, 14 + rnd.nextInt(14))
+            c.drawRect(bx, h * 0.45f, bx + bw, bottom, k.fill)
         }
-        x = fr + w * 0.03f
+        // Strata: wavering horizontal joints with a lit lip underneath.
+        var y = h * 0.5f
+        while (y < bottom) {
+            val tilt = (rnd.nextFloat() - 0.5f) * h * 0.012f
+            var px = -k.margin; var py = y
+            k.line.strokeWidth = (1.2f + rnd.nextFloat() * 1.8f) * k.unit
+            while (px < w + k.margin) {
+                val nx = px + 40f * k.unit
+                val ny = y + tilt * (nx / w) + (rnd.nextFloat() - 0.5f) * 3f * k.unit
+                k.line.color = k.alpha(Color.BLACK, 48)
+                c.drawLine(px, py, nx, ny, k.line)
+                k.line.color = k.alpha(Color.WHITE, 20)
+                c.drawLine(px, py + 3f * k.unit, nx, ny + 3f * k.unit, k.line)
+                px = nx; py = ny
+            }
+            y += h * (0.008f + rnd.nextFloat() * 0.016f)
+        }
+        // Cracks running down from the top, with a few branches.
+        repeat(130) {
+            val sx = -k.margin + rnd.nextFloat() * (w + 2 * k.margin)
+            var cy = topY(sx) + rnd.nextFloat() * h * 0.04f
+            var cxp = sx
+            val len = h * (0.03f + rnd.nextFloat() * 0.18f)
+            val end = cy + len
+            k.line.strokeWidth = (1f + rnd.nextFloat() * 1.6f) * k.unit
+            k.line.color = k.alpha(Color.BLACK, 34 + rnd.nextInt(34))
+            while (cy < end) {
+                val nx = cxp + (rnd.nextFloat() - 0.5f) * 7f * k.unit
+                val ny = cy + 9f * k.unit
+                c.drawLine(cxp, cy, nx, ny, k.line)
+                cxp = nx; cy = ny
+            }
+        }
+        // Moss and ferns clinging to the lower rock and the ledges.
+        repeat(70) {
+            val mx = -k.margin + rnd.nextFloat() * (w + 2 * k.margin)
+            val my = h * (0.62f + 0.27f * rnd.nextFloat() * rnd.nextFloat() + 0.0f)
+            k.fill.color = k.alpha(l.foliage(if (rnd.nextBoolean()) 0xFF4E7A33.toInt() else 0xFF35602F.toInt()), 120 + rnd.nextInt(60))
+            c.drawCircle(mx, my, (2f + rnd.nextFloat() * 7f) * k.unit, k.fill)
+        }
+        // Wet, dark rock beside the falling water.
+        for (side in intArrayOf(-1, 1)) {
+            val x0 = mid + side * w * 0.07f
+            k.shader = LinearGradient(x0, 0f, x0 + side * w * 0.09f, 0f, k.alpha(Color.BLACK, 110), 0, Shader.TileMode.CLAMP)
+            c.drawRect(minOf(x0, x0 + side * w * 0.09f), lip, maxOf(x0, x0 + side * w * 0.09f), bottom, k.fill)
+            k.shader = null
+        }
+        c.restore()
+        // Two rock ledges where the water steps down.
+        for (tier in floatArrayOf(0.3f, 0.62f)) {
+            val ty = lip + (h * 0.86f - lip) * tier
+            val half = fallHalf(tier) * 1.25f
+            val ledge = Path()
+            ledge.moveTo(mid - half, ty - h * 0.004f)
+            ledge.lineTo(mid + half, ty - h * 0.004f)
+            ledge.lineTo(mid + half * 1.1f, ty + h * 0.012f)
+            ledge.lineTo(mid - half * 1.1f, ty + h * 0.012f)
+            ledge.close()
+            k.fill.color = k.darken(rock, 0.35f)
+            c.drawPath(ledge, k.fill)
+            k.fill.color = k.alpha(Color.WHITE, 30)
+            c.drawRect(mid - half, ty - h * 0.004f, mid + half, ty, k.fill)
+        }
+        // Trees on the plateau and bushes at the foot of the wall.
+        val lit = l.foliage(0xFF4C8A4A.toInt()); val dark = l.foliage(0xFF1C3A2A.toInt())
+        x = -k.margin
         while (x < w + k.margin) {
-            val gy = if (x > w * 0.8f) h * 0.565f - (x - w * 0.8f) / (w * 0.3f) * h * 0.006f else h * 0.565f + (w * 0.8f - x) / (w * 0.8f - fr) * h * 0.035f
-            val th = h * (0.05f + rnd.nextFloat() * 0.05f)
-            k.conifer(c, x, gy + th * 0.1f, th, k.jitter(lit, rnd, 0.16f), dark, l.shade(0xFF3A2C22.toInt()), rnd, 0.7f)
-            x += (18f + rnd.nextFloat() * 16f) * k.unit
+            if (abs(x - mid) > w * 0.1f) {
+                val th = h * (0.05f + rnd.nextFloat() * 0.06f)
+                if (rnd.nextFloat() < 0.75f) k.conifer(c, x, topY(x) + th * 0.12f, th, k.jitter(lit, rnd, 0.16f), dark, l.shade(0xFF3A2C22.toInt()), rnd, 0.6f)
+                else k.broadleaf(c, x, topY(x) + th * 0.1f, th * 0.8f, k.jitter(lit, rnd, 0.16f), dark, l.shade(0xFF4A3A2A.toInt()), rnd, 0.4f)
+            }
+            x += (17f + rnd.nextFloat() * 15f) * k.unit
         }
-        // Boulders where the cliffs meet the pool.
         for (i in 0 until 9) {
-            val side = if (i % 2 == 0) rnd.nextFloat() * (fl - w * 0.02f) else fr + w * 0.02f + rnd.nextFloat() * (w - fr)
-            k.rock(c, side, pt + h * 0.006f, w * (0.018f + 0.03f * rnd.nextFloat()), l.ground(0xFF6A6358.toInt()), rnd)
+            val bx = if (i < 5) w * (0.02f + 0.06f * i) else w * (0.97f - 0.06f * (i - 5))
+            k.broadleaf(c, bx, h * (0.875f + 0.01f * rnd.nextFloat()), h * (0.035f + 0.02f * rnd.nextFloat()), k.jitter(lit, rnd, 0.12f), dark, l.shade(0xFF4A3A2A.toInt()), rnd, 0.35f)
         }
         return bmp
     }
 
-    private fun jag(p: Path, x0: Float, y0: Float, x1: Float, y1: Float, rnd: Random, amp: Float, segs: Int = 10) {
-        for (i in 1..segs) {
-            val t = i / segs.toFloat()
-            val last = i == segs
-            p.lineTo(
-                x0 + (x1 - x0) * t + (if (last) 0f else (rnd.nextFloat() - 0.5f) * amp),
-                y0 + (y1 - y0) * t + (if (last) 0f else (rnd.nextFloat() - 0.5f) * amp),
-            )
+    private fun foreground(k: PaintKit): Bitmap? {
+        val (c, bmp) = k.newLayer(layers[2]) ?: return null
+        val l = k.l; val h = k.h; val w = k.w
+        val rnd = Random(103)
+        val ridge = Ridge(k.width, h * 0.93f, h * 0.03f, false, 61)
+        for (side in intArrayOf(-1, 1)) {
+            c.save()
+            if (side < 0) c.clipRect(-k.margin, h * 0.8f, w * 0.3f, h) else c.clipRect(w * 0.72f, h * 0.8f, w + k.margin, h)
+            k.hill(c, ridge, h, l.ground(0xFF4E7A3A.toInt()), l.ground(0xFF21401C.toInt()), rnd, 200)
+            c.restore()
         }
-    }
-
-    override fun update(dtMs: Long) {
-        super.update(dtMs)
-        val dt = dtMs / 1000f
-        for (i in 0 until STREAKS) {
-            sy[i] += sv[i] * dt
-            if (sy[i] - sl[i] > poolTop) sy[i] = fallTop
+        // Boulders along the bank and a few stepping stones near the fall.
+        for (i in 0 until 8) {
+            val bx = if (i % 2 == 0) w * (0.02f + 0.28f * rnd.nextFloat()) else w * (0.72f + 0.26f * rnd.nextFloat())
+            k.rock(c, bx, h * (0.92f + 0.06f * rnd.nextFloat()), w * (0.035f + 0.06f * rnd.nextFloat()), l.ground(0xFF6A6358.toInt()), rnd)
         }
+        for (i in 0 until 4) k.rock(c, w * (0.36f + 0.28f * rnd.nextFloat()), h * (0.885f + 0.01f * rnd.nextFloat()), w * (0.012f + 0.018f * rnd.nextFloat()), l.ground(0xFF5F584E.toInt()), rnd)
+        val lit = l.foliage(0xFF5A9A4A.toInt()); val dark = l.foliage(0xFF1E4224.toInt())
+        for (side in intArrayOf(-1, 1)) {
+            val tx = if (side < 0) w * 0.01f else w * 0.99f
+            k.conifer(c, tx, h * 0.97f, h * 0.27f, lit, dark, l.shade(0xFF3A2C22.toInt()), rnd, 0.9f)
+            for (j in 0 until 3) {
+                val bx = if (side < 0) w * (0.06f + 0.08f * j) else w * (0.94f - 0.08f * j)
+                k.broadleaf(c, bx, h * (0.965f + 0.02f * rnd.nextFloat()), h * (0.05f + 0.025f * rnd.nextFloat()), k.jitter(lit, rnd, 0.12f), dark, l.shade(0xFF4A3A2A.toInt()), rnd, 0.45f)
+            }
+        }
+        k.grass(c, ridge, h, 700, l.ground(0xFF86C15A.toInt()), l.ground(0xFF1E3518.toInt()), rnd)
+        return bmp
     }
 
     override fun drawAnimated(canvas: Canvas, stage: Int) {
-        if (stage != 1) return
-        pool.draw(canvas, timeMs, windKmh + 15f, shift(0.9f))
-        canvas.save()
-        canvas.translate(shift(0.8f), 0f)
-        canvas.drawRect(fallLeft, fallTop, fallRight, poolTop, fallPaint)
-        var n = 0
-        for (i in 0 until STREAKS) {
-            streakLines[n++] = sx[i]; streakLines[n++] = sy[i] - sl[i]
-            streakLines[n++] = sx[i]; streakLines[n++] = min(sy[i], poolTop)
-        }
-        streakPaint.alpha = 150
-        canvas.drawLines(streakLines, 0, n, streakPaint)
+        if (stage != 2) return
+        val w = width.toFloat(); val h = height.toFloat()
         val t = timeMs / 1000f
-        val mid = (fallLeft + fallRight) / 2f
-        for (k in 0 until 5) {
-            val r = (fallRight - fallLeft) * (0.6f + 0.25f * sin(t * 1.5f + k))
+        pool.draw(canvas, timeMs, windKmh + 12f, shift(0.9f))
+
+        canvas.save()
+        canvas.translate(shift(0.7f), 0f)
+        canvas.save()
+        canvas.clipPath(fallPath)
+        canvas.drawRect(0f, lipY, w, baseY, fallPaint)
+        // Streaks of water sliding down; each slants with the fall's own shape.
+        var nThin = 0; var nThick = 0
+        for (i in 0 until STREAKS) {
+            val tt = (sy[i] + t * sv[i] * 0.45f) % 1f
+            val t2 = (tt + sl[i]).coerceAtMost(1f)
+            val y1 = lipY + (baseY - lipY) * tt
+            val y2 = lipY + (baseY - lipY) * t2
+            val x1 = fallCx(tt) + (su[i] - 0.5f) * 2f * fallHalf(tt) * 0.92f
+            val x2 = fallCx(t2) + (su[i] - 0.5f) * 2f * fallHalf(t2) * 0.92f
+            if (i % 4 == 0) { thickLines[nThick++] = x1; thickLines[nThick++] = y1; thickLines[nThick++] = x2; thickLines[nThick++] = y2 }
+            else { thinLines[nThin++] = x1; thinLines[nThin++] = y1; thinLines[nThin++] = x2; thinLines[nThin++] = y2 }
+        }
+        thickPaint.alpha = 90
+        canvas.drawLines(thickLines, 0, nThick, thickPaint)
+        thinPaint.alpha = 190
+        canvas.drawLines(thinLines, 0, nThin, thinPaint)
+        // Foam boiling where the water hits each ledge.
+        for (tier in floatArrayOf(0.3f, 0.62f)) {
+            val ty = lipY + (baseY - lipY) * tier
+            val half = fallHalf(tier)
+            for (k in 0 until 7) {
+                val fx = fallCx(tier) + (k - 3) / 3f * half * 0.95f
+                foamPaint.alpha = (150 + 70 * sin(t * 3f + k * 1.7f + tier * 9f)).toInt().coerceIn(60, 230)
+                canvas.drawCircle(fx, ty + sin(t * 4f + k) * 2f * unitPx, w * (0.012f + 0.005f * sin(t * 2f + k)), foamPaint)
+            }
+        }
+        canvas.restore()
+
+        // Mist and ripples at the foot of the fall.
+        val mx = fallCx(1f)
+        for (m in 0 until 3) {
+            val r = w * (0.2f + 0.05f * m + 0.015f * sin(t * 0.9f + m))
+            mistPaint.alpha = (150 - 30 * m + 25 * sin(t * 1.3f + m * 2f)).toInt().coerceIn(40, 200)
             canvas.save()
-            canvas.translate(mid + (k - 2) * r * 0.45f, poolTop - r * 0.15f)
-            canvas.scale(r, r * 0.5f)
+            canvas.translate(mx + (m - 1) * w * 0.05f, baseY - h * (0.012f + 0.01f * m))
+            canvas.scale(r, r * 0.4f)
             canvas.drawCircle(0f, 0f, 1f, mistPaint)
             canvas.restore()
+        }
+        for (r in 0 until 3) {
+            val p = (t * 0.35f + r / 3f) % 1f
+            val rx = p * w * 0.2f
+            ripplePaint.alpha = ((1f - p) * 140).toInt()
+            canvas.drawOval(mx - rx, baseY + h * 0.012f - rx * 0.18f, mx + rx, baseY + h * 0.012f + rx * 0.18f, ripplePaint)
+        }
+        // Spray thrown up and falling back.
+        for (i in 0 until 28) {
+            val p = (t * 0.8f + i / 28f) % 1f
+            val side = (((i * 7919) % 13) / 6.5f - 1f)
+            val sx = mx + side * fallHalf(1f) * (0.5f + 1.1f * p)
+            val sy2 = baseY - sin(PI.toFloat() * p) * h * 0.045f * (0.5f + ((i * 31) % 10) / 10f)
+            sprayPaint.alpha = ((1f - p) * 200).toInt()
+            canvas.drawCircle(sx, sy2, (1.5f + (i % 3)) * unitPx, sprayPaint)
         }
         canvas.restore()
     }
 
     private companion object {
-        const val STREAKS = 60
+        const val STREAKS = 70
     }
 }
