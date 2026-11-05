@@ -41,4 +41,9 @@ enum class LandscapeType(val label: String) {
     HARBOR("Harbor with fishing boats"),
     FROZEN_LAKE("Frozen lake"),
     MANGROVE_BACKWATERS("Backwaters with houseboat"),
+    CITY_SKYLINE("City skyline"),
+    HILL_STATION("Hill station town"),
+    TEMPLE_HILLTOP("Temple on a hilltop"),
+    BRIDGE_RIVER("Bridge over river"),
+    CAMPING("Camping with campfire"),
 }

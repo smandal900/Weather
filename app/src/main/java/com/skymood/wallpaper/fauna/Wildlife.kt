@@ -137,7 +137,7 @@ class Wildlife {
         if (night && dry && !sea && ls != LandscapeType.SNOWY_PEAKS) target[4] = 5 else if (tod == TimeOfDay.DUSK && dry && !sea) target[4] = 3
         val glowLand = ls == LandscapeType.FOREST || ls == LandscapeType.GRASS_FIELD || ls == LandscapeType.HILL ||
             ls == LandscapeType.LAKE || ls == LandscapeType.RIVER_VALLEY || ls == LandscapeType.COUNTRYSIDE_VILLAGE ||
-            ls == LandscapeType.WATERFALL || ls == LandscapeType.MANGROVE_BACKWATERS
+            ls == LandscapeType.WATERFALL || ls == LandscapeType.MANGROVE_BACKWATERS || ls == LandscapeType.CAMPING
         if ((night || tod == TimeOfDay.DUSK) && (fair || dull) && glowLand) fireflies = if (night) 26 else 10
 
         var n = 0

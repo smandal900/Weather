@@ -211,6 +211,11 @@ abstract class Landscape {
             LandscapeType.HARBOR -> HarborLandscape()
             LandscapeType.FROZEN_LAKE -> FrozenLakeLandscape()
             LandscapeType.MANGROVE_BACKWATERS -> MangroveBackwatersLandscape()
+            LandscapeType.CITY_SKYLINE -> CitySkylineLandscape()
+            LandscapeType.HILL_STATION -> HillStationLandscape()
+            LandscapeType.TEMPLE_HILLTOP -> TempleHilltopLandscape()
+            LandscapeType.BRIDGE_RIVER -> BridgeRiverLandscape()
+            LandscapeType.CAMPING -> CampingLandscape()
         }
     }
 }
