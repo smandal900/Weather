@@ -19,7 +19,6 @@ import java.util.concurrent.TimeUnit
 object TreeSprites {
     private val ready = CountDownLatch(1)
     @Volatile private var firs: List<Bitmap> = emptyList()
-    @Volatile private var oaks: List<Bitmap> = emptyList()
     private var started = false
 
     @Synchronized
@@ -29,21 +28,12 @@ object TreeSprites {
         Executors.newSingleThreadExecutor { r -> Thread(r, "SkyMoodTrees").apply { isDaemon = true; priority = Thread.MIN_PRIORITY } }
             .execute {
                 try {
-                    val all = assets.list("trees")?.filter { it.endsWith(".webp") }?.sorted().orEmpty()
-                    fun load(prefix: String) = all.filter { it.startsWith(prefix) }
-                        .mapNotNull { n -> runCatching { assets.open("trees/$n").use { BitmapFactory.decodeStream(it) } }.getOrNull() }
-                    firs = load("fir")
-                    oaks = load("oak")
+                    val names = assets.list("trees")?.filter { it.startsWith("fir") && it.endsWith(".webp") }?.sorted().orEmpty()
+                    firs = names.mapNotNull { n -> runCatching { assets.open("trees/$n").use { BitmapFactory.decodeStream(it) } }.getOrNull() }
                 } finally {
                     ready.countDown()
                 }
             }
-    }
-
-    /** The broadleaf (acacia / rain tree) cut-outs, same rules as [firs]. */
-    fun oaks(): List<Bitmap> {
-        if (started) ready.await(2, TimeUnit.SECONDS)
-        return oaks
     }
 
     /** The fir/spruce cut-outs. Call from a background (painting) thread: waits briefly for loading. */

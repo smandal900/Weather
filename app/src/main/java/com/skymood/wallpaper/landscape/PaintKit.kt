@@ -131,12 +131,6 @@ class PaintKit(val width: Int, val height: Int, val l: Lighting) {
         c: Canvas, x: Float, baseY: Float, th: Float, lit: Int, dark: Int, trunk: Int,
         rnd: Random, detail: Float,
     ) {
-        // Real tree cut-outs when the bundled pictures are there (see TreeSprites); drawn trees otherwise.
-        val photos = TreeSprites.firs()
-        if (photos.isNotEmpty()) {
-            photoTree(c, photos[rnd.nextInt(photos.size)], x, baseY + th * 0.02f, th, if (th < h * 0.07f) 0.15f else 0f, rnd.nextBoolean())
-            return
-        }
         val lean = (rnd.nextFloat() - 0.5f) * th * 0.03f
         val trunkW = th * 0.014f
         val tp = Path()
@@ -249,11 +243,6 @@ class PaintKit(val width: Int, val height: Int, val l: Lighting) {
         c: Canvas, x: Float, baseY: Float, th: Float, lit: Int, dark: Int, trunk: Int,
         rnd: Random, detail: Float,
     ) {
-        val photos = TreeSprites.oaks()
-        if (photos.isNotEmpty()) {
-            photoTree(c, photos[rnd.nextInt(photos.size)], x, baseY + th * 0.03f, th * 1.05f, if (th < h * 0.07f) 0.15f else 0f, rnd.nextBoolean())
-            return
-        }
         val deep = darken(dark, 0.35f)
         val crownW = th * 0.95f
         val crownCy = baseY - th * 0.6f
