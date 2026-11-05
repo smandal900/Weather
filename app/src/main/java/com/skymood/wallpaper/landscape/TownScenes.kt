@@ -299,16 +299,7 @@ class CampingLandscape : PaintedLandscape() {
         flame.color = 0xFFFF7A1A.toInt(); core.color = 0xFFFFE08A.toInt()
     }
 
-    override fun paintAll(k: PaintKit): PaintResult {
-        // Real tree cut-outs when the bundled pictures are present, painted trees otherwise.
-        val firs = TreeSprites.firs()
-        val sway = HashMap<String, Bitmap>()
-        if (firs.isNotEmpty()) {
-            k.photoTreeSprite(firs[0], k.h * 0.36f)?.let { sway["treeL"] = it }
-            k.photoTreeSprite(firs[3 % firs.size], k.h * 0.32f)?.let { sway["treeR"] = it }
-        }
-        return PaintResult(arrayOf(peaks(k), forest(k, firs), clearing(k, sway.isEmpty())), sway)
-    }
+    override fun paintAll(k: PaintKit) = PaintResult(arrayOf(peaks(k), forest(k), clearing(k)))
 
     private fun peaks(k: PaintKit): Bitmap? {
         val (c, bmp) = k.newLayer(layers[0]) ?: return null
@@ -320,25 +311,12 @@ class CampingLandscape : PaintedLandscape() {
         return bmp
     }
 
-    private fun forest(k: PaintKit, firs: List<Bitmap>): Bitmap? {
+    private fun forest(k: PaintKit): Bitmap? {
         val (c, bmp) = k.newLayer(layers[1]) ?: return null
         val l = k.l; val h = k.h; val w = k.w
         val rnd = Random(202)
         val ridge = Ridge(k.width, h * 0.64f, h * 0.02f, false, 23)
         k.hill(c, ridge, h * 0.72f, l.distant(l.ground(0xFF3D6B45.toInt()), 0.2f), l.ground(0xFF24402A.toInt()), rnd, 0)
-        if (firs.isNotEmpty()) {
-            // Two rows of cut-out firs: the back row hazier and smaller, the front row clearer.
-            for (row in 0 until 2) {
-                var x = -k.margin + rnd.nextFloat() * 20f
-                while (x < w + k.margin) {
-                    val th = h * (0.09f + rnd.nextFloat() * 0.07f) * (if (row == 0) 0.85f else 1.1f)
-                    k.photoTree(c, firs[rnd.nextInt(firs.size)], x, ridge.yAt(x) + th * (0.06f + row * 0.1f), th, if (row == 0) 0.42f else 0.2f, rnd.nextBoolean())
-                    x += (26f + rnd.nextFloat() * 30f) * k.unit
-                }
-            }
-            k.haze(c, h * 0.6f, h * 0.72f, 0.3f)
-            return bmp
-        }
         val litP = l.distant(l.foliage(0xFF4C8255.toInt()), 0.2f); val darkP = l.distant(l.foliage(0xFF1C3A2A.toInt()), 0.2f); val trunk = l.shade(0xFF3A2C22.toInt())
         for (row in 0 until 2) {
             var x = -k.margin + rnd.nextFloat() * 10f
@@ -352,7 +330,7 @@ class CampingLandscape : PaintedLandscape() {
         return bmp
     }
 
-    private fun clearing(k: PaintKit, paintFrameTrees: Boolean): Bitmap? {
+    private fun clearing(k: PaintKit): Bitmap? {
         val (c, bmp) = k.newLayer(layers[2]) ?: return null
         val l = k.l; val h = k.h; val w = k.w
         val rnd = Random(203)
@@ -394,7 +372,7 @@ class CampingLandscape : PaintedLandscape() {
         c.drawLine(w * 0.50f, h * 0.775f, w * 0.60f, h * 0.78f, k.line)
         // Trees framing the clearing.
         val litP = l.foliage(0xFF4F8A4A.toInt()); val darkP = l.foliage(0xFF183322.toInt()); val trunk = l.shade(0xFF4A3628.toInt())
-        if (paintFrameTrees) for (s in floatArrayOf(-0.03f, 0.07f, 0.93f, 1.03f)) k.conifer(c, w * s, h * 0.98f, h * (0.26f + 0.06f * rnd.nextFloat()), k.jitter(litP, rnd, 0.14f), darkP, trunk, rnd, 1f)
+        for (s in floatArrayOf(-0.03f, 0.07f, 0.93f, 1.03f)) k.conifer(c, w * s, h * 0.98f, h * (0.26f + 0.06f * rnd.nextFloat()), k.jitter(litP, rnd, 0.14f), darkP, trunk, rnd, 1f)
         return bmp
     }
 
@@ -403,16 +381,6 @@ class CampingLandscape : PaintedLandscape() {
         val w = width.toFloat(); val h = height.toFloat()
         val t = timeMs / 1000f
         canvas.save(); canvas.translate(shift(0.9f), 0f)
-        // Cut-out trees at the edges, swaying from their base; stronger wind bends them more.
-        val bend = 0.5f + windKmh / 18f
-        sprites["treeL"]?.let { s ->
-            canvas.save(); canvas.translate(w * 0.02f, h * 1.0f); canvas.rotate(sin(t * (0.7f + windKmh / 40f)) * bend)
-            canvas.drawBitmap(s, -s.width * 0.5f, -s.height.toFloat(), null); canvas.restore()
-        }
-        sprites["treeR"]?.let { s ->
-            canvas.save(); canvas.translate(w * 0.98f, h * 1.0f); canvas.rotate(sin(t * (0.6f + windKmh / 40f) + 1.7f) * bend)
-            canvas.drawBitmap(s, -s.width * 0.5f, -s.height.toFloat(), null); canvas.restore()
-        }
         // Warm light on the ground, stronger the darker it is.
         val dark = when (lighting.timeOfDay) {
             com.skymood.domain.TimeOfDay.NIGHT -> 1f
