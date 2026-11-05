@@ -37,7 +37,7 @@ class LighthouseLandscape : PaintedLandscape() {
 
     // Tower geometry, in fractions of the screen so paint and animation agree.
     private val towerX get() = width * 0.74f
-    private val baseY get() = height * 0.80f
+    private val baseY get() = height * 0.70f
     private val towerH get() = height * 0.31f
     private val lampY get() = baseY - towerH * 0.955f
 
@@ -91,8 +91,8 @@ class LighthouseLandscape : PaintedLandscape() {
         val (c, bmp) = k.newLayer(layers[1]) ?: return null
         val l = k.l; val h = k.h; val w = k.w
         val rnd = Random(82)
-        val baseY = h * 0.80f
-        val water = h * 0.90f
+        val baseY = h * 0.70f
+        val water = h * 0.80f
         // The rock mass.
         val body = Path()
         body.moveTo(w * 0.38f, water)
@@ -229,11 +229,11 @@ class LighthouseLandscape : PaintedLandscape() {
         val rough = 0.6f + (windKmh / 40f).coerceAtMost(1f)
         canvas.save()
         canvas.translate(shift(0.55f), 0f)
-        for (i in 0 until 16) {
-            val x = w * (0.42f + 0.03f * i)
+        for (i in 0 until 26) {
+            val x = w * (0.38f + 0.02f * i)
             val pulse = 0.5f + 0.5f * sin(t * (0.9f + 0.2f * (i % 3)) + i * 1.7f)
             foamPaint.alpha = (200 * pulse * (0.6f + 0.4f * rough)).toInt().coerceIn(0, 255)
-            canvas.drawCircle(x, h * 0.9f + h * 0.003f * sin(t * 1.3f + i), w * (0.008f + 0.012f * pulse * rough), foamPaint)
+            canvas.drawCircle(x, h * 0.8f + h * 0.003f * sin(t * 1.3f + i), w * (0.008f + 0.012f * pulse * rough), foamPaint)
         }
         canvas.restore()
         canvas.save()

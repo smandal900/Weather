@@ -20,7 +20,7 @@ import kotlin.random.Random
 class TropicalIslandLandscape : PaintedLandscape() {
     override val layers = arrayOf(
         PaintLayer(0.50f, 0.62f, 0.08f), // far islets
-        PaintLayer(0.60f, 0.84f, 0.5f),  // the island
+        PaintLayer(0.56f, 0.78f, 0.5f),  // the island
         PaintLayer(0.86f, 1f, 1f),       // sand bank in front
     )
 
@@ -85,13 +85,13 @@ class TropicalIslandLandscape : PaintedLandscape() {
         val l = k.l; val h = k.h; val w = k.w
         val rnd = Random(92)
         val sandTop = l.ground(0xFFF0DDB0.toInt()); val sandBase = l.ground(0xFFD8BE88.toInt())
-        mound(k, c, w * 0.62f, w * 0.34f, h * 0.805f, h * 0.085f, sandTop, sandBase, true, rnd)
+        mound(k, c, ISLAND_CX * w, ISLAND_HALF * w, h * ISLAND_Y, h * ISLAND_H, sandTop, sandBase, true, rnd)
         // Wet sand rim and sparkle of grains at the water line.
         k.line.strokeWidth = 2f * k.unit
         k.line.color = k.alpha(l.ground(0xFF8C7650.toInt()), 90)
-        c.drawLine(w * 0.3f, h * 0.803f, w * 0.94f, h * 0.803f, k.line)
+        c.drawLine(w * 0.3f, h * (ISLAND_Y - 0.002f), w * 0.94f, h * (ISLAND_Y - 0.002f), k.line)
         repeat((500 * k.unit).toInt()) {
-            val x = w * (0.3f + 0.64f * rnd.nextFloat()); val y = h * (0.79f + 0.014f * rnd.nextFloat())
+            val x = w * (0.3f + 0.64f * rnd.nextFloat()); val y = h * (ISLAND_Y - 0.014f + 0.014f * rnd.nextFloat())
             k.fill.color = k.alpha(if (rnd.nextBoolean()) k.darken(sandTop, 0.25f) else k.lighten(sandTop, 0.4f), 120)
             c.drawCircle(x, y, (0.8f + rnd.nextFloat()) * k.unit, k.fill)
         }
@@ -104,9 +104,9 @@ class TropicalIslandLandscape : PaintedLandscape() {
         val rnd = Random(93)
         val body = Path()
         body.moveTo(-k.margin, h)
-        body.lineTo(-k.margin, h * 0.935f)
-        body.cubicTo(w * 0.1f, h * 0.915f, w * 0.3f, h * 0.935f, w * 0.5f, h * 0.975f)
-        body.cubicTo(w * 0.58f, h * 0.99f, w * 0.65f, h * 0.995f, w * 0.7f, h)
+        body.lineTo(-k.margin, h * 0.905f)
+        body.cubicTo(w * 0.1f, h * 0.885f, w * 0.3f, h * 0.905f, w * 0.5f, h * 0.95f)
+        body.cubicTo(w * 0.58f, h * 0.97f, w * 0.65f, h * 0.99f, w * 0.7f, h)
         body.lineTo(w * 0.7f, h)
         body.close()
         val dry = l.ground(0xFFEFDCAE.toInt())
@@ -140,20 +140,20 @@ class TropicalIslandLandscape : PaintedLandscape() {
                     val x = w * (0.28f + 0.68f * u)
                     val pulse = 0.5f + 0.5f * sin(t * 0.9f + i * 1.9f)
                     foamPaint.alpha = (190 * pulse * (0.6f + 0.4f * rough)).toInt().coerceIn(0, 255)
-                    canvas.drawCircle(x, h * 0.808f + h * 0.002f * sin(t * 1.2f + i), w * (0.006f + 0.008f * pulse * rough), foamPaint)
+                    canvas.drawCircle(x, h * (ISLAND_Y + 0.003f) + h * 0.002f * sin(t * 1.2f + i), w * (0.006f + 0.008f * pulse * rough), foamPaint)
                 }
                 val palm = sprites["palm"]
                 if (palm != null) {
-                    drawPalm(canvas, palm, w * 0.50f, h * 0.752f, 0.3f, t, sway, 0f)
-                    drawPalm(canvas, palm, w * 0.66f, h * 0.742f, 0.4f, t, sway, 1.3f)
-                    drawPalm(canvas, palm, w * 0.80f, h * 0.76f, 0.28f, t, sway, 2.6f)
+                    drawPalm(canvas, palm, w * 0.50f, surfaceY(h, 0.50f), 0.3f, t, sway, 0f)
+                    drawPalm(canvas, palm, w * 0.66f, surfaceY(h, 0.66f), 0.4f, t, sway, 1.3f)
+                    drawPalm(canvas, palm, w * 0.80f, surfaceY(h, 0.80f), 0.28f, t, sway, 2.6f)
                 }
                 canvas.restore()
             }
             layers.size -> {
                 val palm = sprites["palm"] ?: return
                 canvas.save(); canvas.translate(shift(1f), 0f)
-                drawPalm(canvas, palm, w * 0.12f, h * 0.955f, 0.85f, t, sway, 0.7f)
+                drawPalm(canvas, palm, w * 0.12f, h * 0.925f, 0.85f, t, sway, 0.7f)
                 canvas.restore()
             }
         }
@@ -168,7 +168,18 @@ class TropicalIslandLandscape : PaintedLandscape() {
         canvas.restore()
     }
 
+    /** Height of the sand under a point of the island, so palms stand on it and not beside it. */
+    private fun surfaceY(h: Float, xFrac: Float): Float {
+        val u = ((xFrac - (ISLAND_CX - ISLAND_HALF)) / (2f * ISLAND_HALF)).coerceIn(0f, 1f)
+        val prof = sin(PI.toFloat() * u).coerceAtLeast(0f).pow(1.3f) * (0.88f + 0.12f * sin(u * 21f))
+        return h * (ISLAND_Y - ISLAND_H * prof) + h * 0.004f
+    }
+
     private companion object {
+        const val ISLAND_CX = 0.62f
+        const val ISLAND_HALF = 0.34f
+        const val ISLAND_Y = 0.725f
+        const val ISLAND_H = 0.085f
         const val LAGOON = 0xFF16808E.toInt()
     }
 }
