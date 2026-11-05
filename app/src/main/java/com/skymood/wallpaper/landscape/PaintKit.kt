@@ -135,8 +135,8 @@ class PaintKit(val width: Int, val height: Int, val l: Lighting) {
         val trunkW = th * 0.014f
         val tp = Path()
         tp.moveTo(x - trunkW, baseY)
-        tp.lineTo(x - trunkW * 0.15f + lean, baseY - th * 0.7f)
-        tp.lineTo(x + trunkW * 0.15f + lean, baseY - th * 0.7f)
+        tp.lineTo(x - trunkW * 0.15f + lean, baseY - th * 0.3f)
+        tp.lineTo(x + trunkW * 0.15f + lean, baseY - th * 0.3f)
         tp.lineTo(x + trunkW, baseY)
         tp.close()
         shader = LinearGradient(
@@ -160,20 +160,20 @@ class PaintKit(val width: Int, val height: Int, val l: Lighting) {
         // branches start (it read as a pale vertical scratch through every tree).
         val core = Path()
         val coreSteps = 14
-        core.moveTo(x - maxLen * 0.26f, crownBottom)
+        core.moveTo(x - maxLen * 0.1f, crownBottom)
         for (s in 1..coreSteps) {
             val t = s / coreSteps.toFloat()
-            val hw = maxLen * 0.3f * (1f - t).pow(0.7f) + th * 0.004f
+            val hw = maxLen * 0.12f * (1f - t).pow(0.7f) + th * 0.004f
             core.lineTo(x + lean * t - hw, crownBottom - (crownBottom - crownTop) * t)
         }
         for (s in coreSteps downTo 1) {
             val t = s / coreSteps.toFloat()
-            val hw = maxLen * 0.3f * (1f - t).pow(0.7f) + th * 0.004f
+            val hw = maxLen * 0.12f * (1f - t).pow(0.7f) + th * 0.004f
             core.lineTo(x + lean * t + hw, crownBottom - (crownBottom - crownTop) * t)
         }
-        core.lineTo(x + maxLen * 0.26f, crownBottom)
+        core.lineTo(x + maxLen * 0.1f, crownBottom)
         core.close()
-        fill.color = mix(deep, dark, 0.35f)
+        fill.color = mix(deep, dark, 0.6f)
         c.drawPath(core, fill)
 
         for (pass in 0..1) { // 0 = branches behind the trunk, 1 = in front
@@ -181,16 +181,33 @@ class PaintKit(val width: Int, val height: Int, val l: Lighting) {
                 val t = i / (whorls - 1f) // 0 bottom .. 1 top
                 val y = crownBottom - (crownBottom - crownTop) * t.pow(0.92f) + (rnd.nextFloat() - 0.5f) * th * 0.01f
                 val cx = x + lean * t
-                val len = maxLen * (1f - t).pow(0.65f) * (0.75f + rnd.nextFloat() * 0.45f) + th * 0.02f
+                val len = maxLen * (1f - t).pow(0.65f) * (0.6f + rnd.nextFloat() * 0.7f) + th * 0.02f
                 for (side in intArrayOf(-1, 1)) {
                     if (pass == 0 && rnd.nextFloat() < 0.2f) continue
+                    // Real firs have gaps between their drooping branches, most of all low down.
+                    if (pass == 1 && t < 0.85f && rnd.nextFloat() < 0.16f * (1.1f - t)) continue
                     val reach = if (pass == 0) len * 0.8f else len
                     val ex = cx + side * reach
-                    val ey = y + reach * (0.22f + rnd.nextFloat() * 0.2f) * (0.5f + t * 0.3f)
+                    // Lower branches droop more; the tips curl back up a little.
+                    val ey = y + reach * (0.3f + rnd.nextFloat() * 0.26f) * (0.95f - 0.45f * t)
                     val qx = cx + side * reach * 0.5f
-                    val qy = y - reach * 0.04f
+                    val qy = y - reach * 0.1f
+                    if (pass == 1) {
+                        // The bare branch itself, so each tier reads as a branch with needles hanging off it.
+                        line.strokeWidth = max(1.4f, th * 0.006f * (1f - t * 0.6f))
+                        line.color = alpha(deep, 235)
+                        // Start a little out from the trunk so the branches do not pile into a dark pole.
+                        var bx = cx + side * reach * 0.14f; var by = y
+                        for (s in 1..4) {
+                            val u = 0.14f + 0.86f * s / 4f; val iu = 1f - u
+                            val nx = iu * iu * cx + 2 * iu * u * qx + u * u * ex
+                            val ny = iu * iu * y + 2 * iu * u * qy + u * u * ey
+                            c.drawLine(bx, by, nx, ny, line); bx = nx; by = ny
+                        }
+                        line.strokeWidth = max(1.2f, th * 0.0042f)
+                    }
                     val clusters = (reach / (clusterSize * 0.75f)).toInt().coerceIn(2, 16)
-                    for (k in 1..clusters) {
+                    for (k in 0..clusters) {
                         val u = k / clusters.toFloat()
                         val iu = 1f - u
                         val px = iu * iu * cx + 2 * iu * u * qx + u * u * ex
@@ -309,9 +326,9 @@ class PaintKit(val width: Int, val height: Int, val l: Lighting) {
         // the mountain so the blur never leaks into the sky.
         c.save()
         c.clipPath(body)
-        for (k in 0 until 6) {
+        for (k in 0 until 12) {
             shadowPath.rewind(); lightPath.rewind()
-            val f = 1f - k * 0.15f
+            val f = 1f - k * 0.075f
             x = ridge.left
             // Smooth the steepness along the ridge so neighbouring slices fade into each other.
             var prevD = 0f
@@ -330,8 +347,8 @@ class PaintKit(val width: Int, val height: Int, val l: Lighting) {
                 }
                 x = x1
             }
-            fill.color = alpha(Color.BLACK, 20); c.drawPath(shadowPath, fill)
-            fill.color = alpha(Color.WHITE, 8); c.drawPath(lightPath, fill)
+            fill.color = alpha(Color.BLACK, 11); c.drawPath(shadowPath, fill)
+            fill.color = alpha(Color.WHITE, 4); c.drawPath(lightPath, fill)
         }
         if (snowLine != null) {
             val snowLit = l.shade(Lighting.SNOW)
