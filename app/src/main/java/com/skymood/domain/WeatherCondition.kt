@@ -46,4 +46,9 @@ enum class LandscapeType(val label: String) {
     TEMPLE_HILLTOP("Temple on a hilltop"),
     BRIDGE_RIVER("Bridge over river"),
     CAMPING("Camping with campfire"),
+    RAILWAY_HILLS("Railway through hills"),
+    TRAIN_VIADUCT("Train on a bridge"),
+    MOUNTAIN_ROAD("Lonely mountain road"),
+    COUNTRY_CYCLE("Bicycle on a country path"),
+    ABOVE_CLOUDS("Airplane above clouds"),
 }

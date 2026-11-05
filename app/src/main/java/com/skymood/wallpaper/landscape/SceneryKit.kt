@@ -117,3 +117,67 @@ internal fun moundPath(x0: Float, x1: Float, baseY: Float, height: Float, wobble
 }
 
 internal fun maxF(a: Float, b: Float) = max(a, b)
+
+/** Draws a side-on passenger train: a locomotive and coaches with lit windows and a headlight beam after dark. */
+internal class TrainRenderer {
+    private val p = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val glow = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val beam = Path()
+
+    init {
+        glow.shader = RadialGradient(0f, 0f, 1f, intArrayOf(0xCCFFF2C4.toInt(), 0x33FFE9A8, Color.TRANSPARENT), floatArrayOf(0f, 0.3f, 1f), Shader.TileMode.CLAMP)
+    }
+
+    /** [headX] is the front of the locomotive; the train runs to the right. [trackY] is the top of the rails. */
+    fun draw(c: Canvas, headX: Float, trackY: Float, w: Float, h: Float, l: Lighting, cars: Int) {
+        val carLen = w * 0.15f; val carH = h * 0.03f; val gap = w * 0.004f
+        val locoLen = carLen * 1.05f
+        val lit = l.windowsLit
+        // Locomotive: dark body with a red band and a sloping nose.
+        val body = Path()
+        body.moveTo(headX - locoLen, trackY - carH * 0.2f); body.lineTo(headX - locoLen, trackY - carH)
+        body.lineTo(headX - carH * 0.9f, trackY - carH); body.lineTo(headX, trackY - carH * 0.45f); body.lineTo(headX, trackY - carH * 0.2f); body.close()
+        p.shader = LinearGradient(0f, trackY - carH, 0f, trackY, l.shade(0xFF3E4A5E.toInt()), l.shade(0xFF1E2430.toInt()), Shader.TileMode.CLAMP)
+        c.drawPath(body, p); p.shader = null
+        p.color = l.shade(0xFFD9442F.toInt())
+        c.drawRect(headX - locoLen, trackY - carH * 0.55f, headX - carH * 0.2f, trackY - carH * 0.4f, p)
+        p.color = if (lit) 0xFFFFD27A.toInt() else l.shade(0xFF8FB0C8.toInt())
+        c.drawRect(headX - carH * 2.2f, trackY - carH * 0.9f, headX - carH * 1.2f, trackY - carH * 0.62f, p)
+        // Coaches.
+        for (i in 0 until cars) {
+            val right = headX - locoLen - gap - i * (carLen + gap)
+            val left = right - carLen
+            p.shader = LinearGradient(0f, trackY - carH, 0f, trackY, l.shade(0xFFE8E4DA.toInt()), l.shade(0xFFA8A49A.toInt()), Shader.TileMode.CLAMP)
+            c.drawRect(left, trackY - carH, right, trackY - carH * 0.2f, p); p.shader = null
+            p.color = l.shade(0xFFB5412F.toInt())
+            c.drawRect(left, trackY - carH * 0.5f, right, trackY - carH * 0.36f, p)
+            val ws = carLen / 8f
+            for (k in 0 until 7) {
+                p.color = if (lit) 0xFFFFD27A.toInt() else l.shade(0xFF6F8AA2.toInt())
+                c.drawRect(left + ws * (k + 0.5f) + ws * 0.1f, trackY - carH * 0.9f, left + ws * (k + 1.1f), trackY - carH * 0.58f, p)
+            }
+        }
+        // Wheels along the whole train.
+        p.color = l.shade(0xFF14171C.toInt())
+        var x = headX - carH
+        val tail = headX - locoLen - gap - cars * (carLen + gap)
+        while (x > tail) { c.drawCircle(x, trackY - carH * 0.1f, carH * 0.1f, p); x -= carH * 0.8f }
+        if (lit) {
+            c.save(); c.translate(headX, trackY - carH * 0.42f); c.scale(carH * 1.2f, carH * 1.2f); glow.alpha = 255; c.drawCircle(0f, 0f, 1f, glow); c.restore()
+            beam.rewind(); beam.moveTo(headX, trackY - carH * 0.42f); beam.lineTo(headX + w * 0.35f, trackY - carH * 0.95f); beam.lineTo(headX + w * 0.35f, trackY + carH * 0.1f); beam.close()
+            p.color = 0x22FFF2C4; c.drawPath(beam, p)
+        }
+    }
+}
+
+/** Two rails with sleepers across [x0]..[x1] at [y], with a gravel bed under them. */
+internal fun PaintKit.railTrack(c: Canvas, x0: Float, x1: Float, y: Float) {
+    fill.color = l.shade(0xFF7A746A.toInt())
+    c.drawRect(x0, y - h * 0.002f, x1, y + h * 0.012f, fill)
+    line.strokeWidth = 2f * unit; line.color = l.shade(0xFF4A3A2A.toInt())
+    var x = x0
+    while (x < x1) { c.drawLine(x, y + h * 0.001f, x - 2f * unit, y + h * 0.011f, line); x += 9f * unit }
+    line.strokeWidth = 2.2f * unit; line.color = l.shade(0xFFC9CED6.toInt())
+    c.drawLine(x0, y + h * 0.002f, x1, y + h * 0.002f, line)
+    c.drawLine(x0, y + h * 0.0085f, x1, y + h * 0.0085f, line)
+}
