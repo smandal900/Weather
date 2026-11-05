@@ -220,7 +220,6 @@ abstract class Landscape {
             LandscapeType.TRAIN_VIADUCT -> TrainViaductLandscape()
             LandscapeType.MOUNTAIN_ROAD -> MountainRoadLandscape()
             LandscapeType.COUNTRY_CYCLE -> CountryCycleLandscape()
-            LandscapeType.ABOVE_CLOUDS -> AboveCloudsLandscape()
         }
     }
 }

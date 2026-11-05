@@ -50,5 +50,4 @@ enum class LandscapeType(val label: String) {
     TRAIN_VIADUCT("Train on a bridge"),
     MOUNTAIN_ROAD("Lonely mountain road"),
     COUNTRY_CYCLE("Bicycle on a country path"),
-    ABOVE_CLOUDS("Airplane above clouds"),
 }
