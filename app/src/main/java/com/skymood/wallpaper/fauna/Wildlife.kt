@@ -124,7 +124,8 @@ class Wildlife {
         val dull = wx == SceneType.OVERCAST
         val windy = wx == SceneType.WINDY
         val sea = ls == LandscapeType.SEA_BEACH || ls == LandscapeType.OPEN_SEA || ls == LandscapeType.SEA_WITH_BOAT ||
-            ls == LandscapeType.LIGHTHOUSE || ls == LandscapeType.TROPICAL_ISLAND
+            ls == LandscapeType.LIGHTHOUSE || ls == LandscapeType.TROPICAL_ISLAND ||
+            ls == LandscapeType.COASTAL_CLIFFS || ls == LandscapeType.FJORD || ls == LandscapeType.HARBOR
         val dry = fair || dull || windy
 
         if (!night && !sea && ls != LandscapeType.SNOWY_PEAKS) target[0] = if (fair) 6 else if (dull) 3 else if (windy) 2 else 0
@@ -136,7 +137,7 @@ class Wildlife {
         if (night && dry && !sea && ls != LandscapeType.SNOWY_PEAKS) target[4] = 5 else if (tod == TimeOfDay.DUSK && dry && !sea) target[4] = 3
         val glowLand = ls == LandscapeType.FOREST || ls == LandscapeType.GRASS_FIELD || ls == LandscapeType.HILL ||
             ls == LandscapeType.LAKE || ls == LandscapeType.RIVER_VALLEY || ls == LandscapeType.COUNTRYSIDE_VILLAGE ||
-            ls == LandscapeType.WATERFALL
+            ls == LandscapeType.WATERFALL || ls == LandscapeType.MANGROVE_BACKWATERS
         if ((night || tod == TimeOfDay.DUSK) && (fair || dull) && glowLand) fireflies = if (night) 26 else 10
 
         var n = 0
