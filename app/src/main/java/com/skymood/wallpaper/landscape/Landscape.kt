@@ -38,6 +38,8 @@ class Lighting {
         private set
     var reflectionX = 0.3f
         private set
+    /** How clear the air is in four steps (4 crystal clear .. 0 thick haze); far hills fade more when it is low. */
+    var clarity = 4
 
     fun setSun(x: Float) {
         reflectionX = x
@@ -142,11 +144,14 @@ abstract class Landscape {
     }
 
     /** [sunX] is where the sun (or the moon at night) is across the screen, 0..1; it sets the light's side. */
-    fun setConditions(timeOfDay: TimeOfDay, weather: SceneType, windKmh: Float, sunX: Float = 0.3f) {
+    fun setConditions(timeOfDay: TimeOfDay, weather: SceneType, windKmh: Float, sunX: Float = 0.3f, clarity: Int = 4) {
         this.windKmh = windKmh
         val sideFlipped = (sunX < 0.5f) != (lighting.reflectionX < 0.5f)
-        if (timeOfDay != lighting.timeOfDay || weather != lighting.weather || !lightingSet || sideFlipped) {
+        if (timeOfDay != lighting.timeOfDay || weather != lighting.weather || !lightingSet || sideFlipped ||
+            clarity != lighting.clarity
+        ) {
             lightingSet = true
+            lighting.clarity = clarity
             lighting.set(timeOfDay, weather)
             lighting.setSun(sunX)
             if (built) applyLighting()

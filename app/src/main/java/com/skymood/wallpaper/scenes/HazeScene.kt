@@ -67,9 +67,9 @@ class HazeScene : BaseScene() {
         val wind = 1f + windKmh / 25f
         for (i in 0 until dust.activeCount) {
             val p = dust[i]
-            p.x += p.vx * wind * dt
+            p.x += p.vx * wind * dt * driftDir
             p.y += p.vy * dt
-            if (p.x > width + 5f) p.x = -5f
+            if (p.x > width + 5f) p.x = -5f else if (p.x < -5f) p.x = width + 5f
             if (p.y < -5f) p.y = height + 5f else if (p.y > height + 5f) p.y = -5f
         }
     }
@@ -89,7 +89,8 @@ class HazeScene : BaseScene() {
     }
 
     override fun drawForeground(canvas: Canvas) {
-        veilPaint.alpha = (150 + 105 * intensity.coerceAtMost(1f)).toInt()
+        // The less clear the air is (reported visibility and humidity), the thicker the veil.
+        veilPaint.alpha = (255 * (1.1f - atmo.clarity)).toInt().coerceIn(120, 255)
         canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), veilPaint)
         val t = timeMs / 1000f
         for (i in 0 until dust.activeCount) {

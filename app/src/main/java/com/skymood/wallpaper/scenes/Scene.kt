@@ -1,6 +1,7 @@
 package com.skymood.wallpaper.scenes
 
 import android.graphics.Canvas
+import com.skymood.domain.Atmosphere
 import com.skymood.domain.SkyState
 import com.skymood.domain.TimeOfDay
 
@@ -28,6 +29,8 @@ interface Scene {
     fun setEnvironment(windKmh: Float, cloudCover: Int, timeOfDay: TimeOfDay) {}
     /** Where the sun and moon are, and the moon's phase. */
     fun setSky(state: SkyState) {}
+    /** The state of the sky from the weather report: cloud amounts, clarity, darkness, drift. */
+    fun setAtmosphere(atmosphere: Atmosphere) {}
     /** -1 (first home screen) .. 1 (last home screen). */
     fun setParallax(offset: Float) {}
 }
@@ -40,6 +43,7 @@ abstract class BaseScene : Scene {
     protected var cloudCover = 50
     protected var timeOfDay = TimeOfDay.DAY
     protected var skyState = SkyState.DEFAULT
+    protected var atmo = Atmosphere.DEFAULT
     @JvmField protected var parallax = 0f
     protected var sized = false
 
@@ -86,6 +90,16 @@ abstract class BaseScene : Scene {
         skyState = state
     }
 
+    override fun setAtmosphere(atmosphere: Atmosphere) {
+        if (atmosphere == atmo) return
+        atmo = atmosphere
+        if (sized) onAtmosphereChanged()
+    }
+
+    /** +1 when clouds, rain and snow travel to the right on screen, -1 to the left. */
+    protected val driftDir: Float get() = if (atmo.drift >= 0f) 1f else -1f
+
+    protected open fun onAtmosphereChanged() {}
     protected open fun onResize() {}
     protected open fun onIntensityChanged() {}
     protected open fun onTimeOfDayChanged() {}

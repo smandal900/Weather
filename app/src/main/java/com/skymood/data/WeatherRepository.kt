@@ -44,6 +44,13 @@ class WeatherRepository(
                 precipitationMm = c.precipitation,
                 location = location,
                 updatedAtMillis = clock(),
+                cloudLow = c.cloudLow ?: -1,
+                cloudMid = c.cloudMid ?: -1,
+                cloudHigh = c.cloudHigh ?: -1,
+                humidity = c.humidity ?: 60,
+                visibilityM = c.visibility ?: 24_000.0,
+                windFromDeg = c.windDirection ?: 270,
+                gustKmh = c.windGusts ?: 0.0,
             )
             store.saveWeather(state)
             RefreshResult.Success(state)

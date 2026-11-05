@@ -6,6 +6,7 @@ import android.graphics.Paint
 import com.skymood.domain.SceneType
 import com.skymood.wallpaper.particles.Particle
 import com.skymood.wallpaper.particles.ParticlePool
+import kotlin.math.abs
 import kotlin.math.tan
 import kotlin.random.Random
 
@@ -47,6 +48,11 @@ class RainScene(
     override fun setEnvironment(windKmh: Float, cloudCover: Int, timeOfDay: com.skymood.domain.TimeOfDay) {
         super.setEnvironment(windKmh, cloudCover, timeOfDay)
         clouds?.setEnvironment(windKmh, cloudCover, timeOfDay)
+    }
+
+    override fun setAtmosphere(atmosphere: com.skymood.domain.Atmosphere) {
+        super.setAtmosphere(atmosphere)
+        clouds?.setAtmosphere(atmosphere)
     }
 
     override fun setParallax(offset: Float) {
@@ -94,8 +100,8 @@ class RainScene(
         p.vy = speed
         p.vx = speed * tilt
         p.length = height * (0.025f + Random.nextFloat() * 0.035f) * depth * (if (drizzle) 0.45f else 1f)
-        // Start further left when the wind blows right, so the screen stays covered.
-        p.x = Random.nextFloat() * (width + height * tilt) - height * tilt
+        // Start upwind of the screen so it stays covered, whichever way the wind blows.
+        p.x = Random.nextFloat() * (width + height * abs(tilt)) - height * maxOf(tilt, 0f)
         p.y = if (randomY) Random.nextFloat() * height else -p.length - Random.nextFloat() * height * 0.2f
         p.maxLife = height * (0.88f + Random.nextFloat() * 0.12f) // ground line
     }
@@ -116,7 +122,8 @@ class RainScene(
 
     override fun update(dtMs: Long) {
         clouds?.update(dtMs)
-        tilt = tan(windAngle)
+        // Rain slants the way the wind blows (to the left on screen when the wind drifts left).
+        tilt = tan(windAngle) * driftDir
         val dt = dtMs / 1000f
         val target = targetDrops()
         for (i in drops.activeCount - 1 downTo 0) {

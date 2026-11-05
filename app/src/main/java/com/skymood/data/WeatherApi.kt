@@ -33,7 +33,9 @@ interface WeatherApi {
     companion object {
         const val BASE_URL = "https://api.open-meteo.com/"
         const val CURRENT_FIELDS =
-            "weather_code,is_day,temperature_2m,wind_speed_10m,cloud_cover,precipitation"
+            "weather_code,is_day,temperature_2m,wind_speed_10m,cloud_cover,precipitation," +
+                "cloud_cover_low,cloud_cover_mid,cloud_cover_high,relative_humidity_2m," +
+                "visibility,wind_direction_10m,wind_gusts_10m"
 
         val json = Json { ignoreUnknownKeys = true; explicitNulls = false }
 
@@ -67,6 +69,14 @@ data class CurrentWeatherDto(
     @SerialName("wind_speed_10m") val windSpeed: Double,
     @SerialName("cloud_cover") val cloudCover: Int,
     val precipitation: Double = 0.0,
+    @SerialName("cloud_cover_low") val cloudLow: Int? = null,
+    @SerialName("cloud_cover_mid") val cloudMid: Int? = null,
+    @SerialName("cloud_cover_high") val cloudHigh: Int? = null,
+    @SerialName("relative_humidity_2m") val humidity: Int? = null,
+    /** Metres. */
+    val visibility: Double? = null,
+    @SerialName("wind_direction_10m") val windDirection: Int? = null,
+    @SerialName("wind_gusts_10m") val windGusts: Double? = null,
 )
 
 @Serializable

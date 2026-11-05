@@ -95,21 +95,30 @@ class ClearScene : BaseScene() {
 
         val cx = sunX() + parallaxPx
         val cy = sunY()
-        sun.draw(canvas, cx, cy, timeMs, 1f, showCore = true)
+        // How much sun gets through is set by the reported cloud cover and by haze in the air.
+        val strength = (1f - atmo.obscuration) * (0.55f + 0.45f * atmo.clarity)
+        if (strength > 0.03f) {
+            sun.draw(canvas, cx, cy, timeMs, strength.coerceIn(0f, 1f), showCore = atmo.cover < 0.8f, rays = atmo.cover < 0.4f)
+        }
 
-        // Lens flare: soft discs on the line from the sun through the screen centre.
-        val dx = width * 0.5f - cx
-        val dy = height * 0.5f - cy
-        flare(canvas, cx + dx * 0.55f, cy + dy * 0.55f, sunRadius * 0.55f)
-        flare(canvas, cx + dx * 0.9f, cy + dy * 0.9f, sunRadius * 0.3f)
-        flare(canvas, cx + dx * 1.35f, cy + dy * 1.35f, sunRadius * 0.9f)
+        // Lens flare: soft discs on the line from the sun through the screen centre, only in clear sky.
+        val flareAlpha = ((0.5f - atmo.cover) * 2f).coerceIn(0f, 1f)
+        if (flareAlpha > 0.02f) {
+            flarePaint.alpha = (255 * flareAlpha).toInt()
+            val dx = width * 0.5f - cx
+            val dy = height * 0.5f - cy
+            flare(canvas, cx + dx * 0.55f, cy + dy * 0.55f, sunRadius * 0.55f)
+            flare(canvas, cx + dx * 0.9f, cy + dy * 0.9f, sunRadius * 0.3f)
+            flare(canvas, cx + dx * 1.35f, cy + dy * 1.35f, sunRadius * 0.9f)
+        }
     }
 
     override fun drawForeground(canvas: Canvas) {
         for (i in 0 until motes.activeCount) {
             val p = motes[i]
             val twinkle = 0.6f + 0.4f * sin(timeMs / 600f + p.phase)
-            motePaint.alpha = (255 * p.alpha * twinkle).toInt()
+            // Specks of light need sun: fewer under cloud.
+            motePaint.alpha = (255 * p.alpha * twinkle * (1f - atmo.obscuration)).toInt()
             canvas.drawCircle(p.x + parallaxPx * 0.5f, p.y, p.size, motePaint)
         }
     }

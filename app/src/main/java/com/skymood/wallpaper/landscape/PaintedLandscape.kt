@@ -53,10 +53,11 @@ abstract class PaintedLandscape : Landscape() {
         val h = height
         val tod = lighting.timeOfDay
         val weather = lighting.weather
+        val clarity = lighting.clarity
         onLightingChanged()
         painter.execute {
             if (gen != generation) return@execute
-            val kit = PaintKit(w, h, Lighting().apply { set(tod, weather) })
+            val kit = PaintKit(w, h, Lighting().apply { this.clarity = clarity; set(tod, weather) })
             val result = try {
                 paintAll(kit)
             } catch (e: Throwable) {

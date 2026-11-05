@@ -18,7 +18,8 @@ import kotlin.math.sin
 import kotlin.random.Random
 
 /** Fades a far-away colour into the sky near the horizon. */
-internal fun Lighting.distant(color: Int, amount: Float) = SkyGradient.blend(color, skyBottom, amount)
+internal fun Lighting.distant(color: Int, amount: Float) =
+    SkyGradient.blend(color, skyBottom, (amount * (1f + (4 - clarity) * 0.3f)).coerceAtMost(0.92f))
 
 /** A horizontal slab of the screen painted once into its own bitmap. [depth] drives parallax. */
 class PaintLayer(val top: Float, val bottom: Float, val depth: Float)
@@ -83,7 +84,9 @@ class PaintKit(val width: Int, val height: Int, val l: Lighting) {
     /** A band of mist that fades in and out vertically, so layers melt into the distance. */
     fun haze(c: Canvas, top: Float, bottom: Float, strength: Float) {
         val clear = l.skyBottom and 0x00FFFFFF
-        val misty = clear or ((255 * strength).toInt() shl 24)
+        // Reported visibility and humidity: the less clear the air, the thicker the mist.
+        val thick = (strength * (1f + (4 - l.clarity) * 0.35f)).coerceAtMost(0.95f)
+        val misty = clear or ((255 * thick).toInt() shl 24)
         val p = Paint()
         p.shader = LinearGradient(
             0f, top, 0f, bottom, intArrayOf(clear, misty, misty, clear), floatArrayOf(0f, 0.45f, 0.7f, 1f),

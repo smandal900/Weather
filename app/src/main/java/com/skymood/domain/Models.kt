@@ -20,6 +20,15 @@ data class WeatherState(
     val precipitationMm: Double,
     val location: SavedLocation,
     val updatedAtMillis: Long,
+    /** Cloud cover by height in percent; -1 when the report did not include it. */
+    val cloudLow: Int = -1,
+    val cloudMid: Int = -1,
+    val cloudHigh: Int = -1,
+    val humidity: Int = 60,
+    val visibilityM: Double = 24_000.0,
+    /** Direction the wind blows from, degrees. */
+    val windFromDeg: Int = 270,
+    val gustKmh: Double = 0.0,
 ) {
     val condition: WeatherCondition get() = WmoMapper.conditionFor(weatherCode)
     val scene: SceneType get() = WmoMapper.sceneFor(weatherCode, windSpeedKmh)

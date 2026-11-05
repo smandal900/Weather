@@ -18,7 +18,8 @@ import kotlin.random.Random
  */
 class WindyScene : BaseScene() {
 
-    private val clouds = CloudScene(CloudScene.Style.FAIR, drawSky = false, coverRange = 30..65)
+    /** Sun or moon, stars and the reported clouds, racing across the sky. */
+    private val clouds = ClearSkyScene()
     private val gusts = ParticlePool(MAX_GUSTS)
     private val leaves = ParticlePool(MAX_LEAVES)
     private val gustPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -65,6 +66,11 @@ class WindyScene : BaseScene() {
         clouds.setSky(state)
     }
 
+    override fun setAtmosphere(atmosphere: com.skymood.domain.Atmosphere) {
+        super.setAtmosphere(atmosphere)
+        clouds.setAtmosphere(atmosphere)
+    }
+
     override fun setParallax(offset: Float) {
         super.setParallax(offset)
         clouds.setParallax(offset)
@@ -76,7 +82,11 @@ class WindyScene : BaseScene() {
 
     private fun spawnGust(p: Particle, randomX: Boolean) {
         p.length = width * (0.25f + Random.nextFloat() * 0.35f)
-        p.x = if (randomX) Random.nextFloat() * width else -p.length - Random.nextFloat() * width * 0.5f
+        p.x = when {
+            randomX -> Random.nextFloat() * width
+            driftDir > 0f -> -p.length - Random.nextFloat() * width * 0.5f
+            else -> width + Random.nextFloat() * width * 0.5f
+        }
         p.y = height * (0.12f + Random.nextFloat() * 0.75f)
         p.vx = 1.2f + Random.nextFloat() * 0.8f
         p.phase = Random.nextFloat() * 6.28f
@@ -85,7 +95,11 @@ class WindyScene : BaseScene() {
     }
 
     private fun spawnLeaf(p: Particle, randomX: Boolean) {
-        p.x = if (randomX) Random.nextFloat() * width else -30f * unit - Random.nextFloat() * width * 0.3f
+        p.x = when {
+            randomX -> Random.nextFloat() * width
+            driftDir > 0f -> -30f * unit - Random.nextFloat() * width * 0.3f
+            else -> width + 30f * unit + Random.nextFloat() * width * 0.3f
+        }
         p.y = height * (0.3f + Random.nextFloat() * 0.65f)
         p.vx = 0.7f + Random.nextFloat() * 0.6f
         p.vy = (Random.nextFloat() - 0.4f) * height * 0.04f
@@ -99,11 +113,12 @@ class WindyScene : BaseScene() {
         timeMs += dtMs
         clouds.update(dtMs)
         val dt = dtMs / 1000f
-        val v = speed()
+        val dir = driftDir
+        val v = speed() * dir
         for (i in gusts.activeCount - 1 downTo 0) {
             val p = gusts[i]
             p.x += p.vx * v * dt
-            if (p.x > width + 20f) {
+            if (if (dir > 0f) p.x > width + 20f else p.x + p.length < -20f) {
                 if (gusts.activeCount > targetGusts()) gusts.release(i) else spawnGust(p, randomX = false)
             }
         }
@@ -114,7 +129,8 @@ class WindyScene : BaseScene() {
             p.x += p.vx * v * 0.6f * dt
             p.y += (p.vy + sin(t * 2f + p.phase) * height * 0.03f) * dt
             p.phase += p.length * dt
-            if (p.x > width + 40f || p.y > height + 40f || p.y < -40f) {
+            val outSide = if (dir > 0f) p.x > width + 40f else p.x < -40f
+            if (outSide || p.y > height + 40f || p.y < -40f) {
                 if (leaves.activeCount > targetLeaves()) leaves.release(i) else spawnLeaf(p, randomX = false)
             }
         }
@@ -122,7 +138,6 @@ class WindyScene : BaseScene() {
     }
 
     override fun drawBackground(canvas: Canvas) {
-        sky.draw(canvas, width, height, SceneType.WINDY, timeOfDay)
         clouds.drawBackground(canvas)
     }
 

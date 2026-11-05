@@ -21,8 +21,9 @@ import kotlin.random.Random
  * Each cloud is a cluster of overlapping circles filled with one opaque vertical gradient
  * (bright tops, shaded bases), so overlaps never show and clouds properly hide what is behind
  * them. A faint, slightly larger rim pass softens the outline. Distant layers are smaller,
- * slower and tinted towards the sky colour. The number of clouds follows the cloud cover and
- * the drift speed follows the wind. On a partly cloudy day the sun shines from behind them.
+ * slower and tinted towards the sky colour. Nothing is random: each layer holds as many clouds as
+ * the weather report says for that height (near layer = low cloud, far layer = high cloud), the
+ * clouds are darker when it is raining or stormy, and they travel the way the wind blows.
  *
  * @param style colours and placement: fair-weather, rain, storm or snow clouds.
  * @param drawSky false when composed into another scene.
@@ -30,8 +31,6 @@ import kotlin.random.Random
 class CloudScene(
     private val style: Style = Style.FAIR,
     private val drawSky: Boolean = true,
-    /** Keeps the cloud cover inside a range, e.g. 25..55 for Partly cloudy, 85..100 for Overcast. */
-    private val coverRange: IntRange = 0..100,
     private val skyOverride: SceneType? = null,
 ) : BaseScene() {
 
@@ -167,6 +166,8 @@ class CloudScene(
             streakY[i] = height * (0.05f + i * 0.11f + Random.nextFloat() * 0.04f)
             streakW[i] = width * (0.5f + Random.nextFloat() * 0.5f)
         }
+        if (darkKey() != appliedDarkKey) applyColors()
+        computeTargets()
         clouds.clear()
         fill(randomX = true)
     }
@@ -178,15 +179,72 @@ class CloudScene(
         if (width > 1) sun.setup(min(width, height) * 0.075f, warm = timeOfDay != TimeOfDay.DAY)
     }
 
-    override fun setEnvironment(windKmh: Float, cloudCover: Int, timeOfDay: TimeOfDay) {
-        super.setEnvironment(windKmh, cloudCover.coerceIn(coverRange.first, coverRange.last), timeOfDay)
+    override fun onAtmosphereChanged() {
+        if (darkKey() != appliedDarkKey) applyColors()
+        retarget()
+    }
+
+    /** Darkness in tenths, so colours are rebuilt only when it changes noticeably. */
+    private fun darkKey() = (atmo.darkness * 10f).toInt()
+    private var appliedDarkKey = -1
+
+    /** How dark this style of cloud already is, so the report only moves it from there. */
+    private val baseDarkness: Float
+        get() = when (style) {
+            Style.FAIR -> 0.1f
+            Style.OVERCAST -> 0.45f
+            Style.SNOW -> 0.35f
+            Style.RAIN -> 0.7f
+            Style.STORM -> 0.95f
+        }
+
+    /** Moves a cloud colour lighter or darker as the report is lighter or darker than the style expects. */
+    private fun adjust(c: Int): Int {
+        val rel = atmo.darkness - baseDarkness
+        return if (rel < 0f) SkyGradient.blend(c, 0xFFFFFFFF.toInt(), (-rel * 0.6f).coerceAtMost(0.4f))
+        else SkyGradient.blend(c, 0xFF14171C.toInt(), (rel * 0.7f).coerceAtMost(0.5f))
+    }
+
+    /** Cloud cover of one layer, 0..1: layer 0 is the low cloud, 2 the high thin cloud. */
+    private fun layerCover(layer: Int): Float {
+        val reported = when (layer) { 0 -> atmo.low; 1 -> atmo.mid; else -> atmo.high }
+        // A rainy, snowy or overcast report always has a cloud deck, whatever the height figures say.
+        val floor = when (style) {
+            Style.FAIR -> 0f
+            Style.OVERCAST -> 0.75f
+            Style.SNOW -> 0.7f
+            Style.RAIN -> 0.8f
+            Style.STORM -> 0.9f
+        }
+        return maxOf(reported, floor)
+    }
+
+    private val layerTarget = IntArray(LAYERS)
+
+    /** How many clouds each layer should hold; true when that changed. */
+    private fun computeTargets(): Boolean {
+        var changed = false
+        for (l in 0 until LAYERS) {
+            val t = (layerCover(l) * PER_LAYER + 0.35f).toInt().coerceIn(0, PER_LAYER)
+            if (t != layerTarget[l]) { layerTarget[l] = t; changed = true }
+        }
+        return changed
+    }
+
+    private fun retarget() {
+        if (!computeTargets() || !sized) return
+        // Remove clouds a layer no longer needs, then add the missing ones across the sky.
+        for (i in clouds.activeCount - 1 downTo 0) {
+            if (countInLayer(clouds[i].layer) > layerTarget[clouds[i].layer]) clouds.release(i)
+        }
+        fill(randomX = true)
     }
 
     private fun applyColors() {
         val night = timeOfDay == TimeOfDay.NIGHT
         val warm = timeOfDay == TimeOfDay.DAWN || timeOfDay == TimeOfDay.DUSK
-        val light: Int
-        val shade: Int
+        var light: Int
+        var shade: Int
         when (style) {
             Style.FAIR -> when {
                 night -> { light = 0xFF4E586C.toInt(); shade = 0xFF262C39.toInt() }
@@ -202,6 +260,9 @@ class CloudScene(
             Style.STORM -> if (night) { light = 0xFF2C313B.toInt(); shade = 0xFF101217.toInt() }
             else { light = 0xFF6A727E.toInt(); shade = 0xFF30353E.toInt() }
         }
+        appliedDarkKey = darkKey()
+        light = adjust(light)
+        shade = adjust(shade)
         val skyColor = SkyGradient.midColor(skyType, timeOfDay)
         for (l in 0 until LAYERS) {
             // Atmospheric perspective: far layers take on the sky colour instead of turning transparent.
@@ -232,7 +293,7 @@ class CloudScene(
             0f, 0f, 1f, intArrayOf(streak and 0x00FFFFFF or 0x88000000.toInt(), streak and 0x00FFFFFF or 0x33000000, 0),
             floatArrayOf(0f, 0.6f, 1f), Shader.TileMode.CLAMP,
         )
-        veilPaint.color = if (night) 0xFF161A22.toInt() else 0xFF9AA5B3.toInt()
+        veilPaint.color = adjust(if (night) 0xFF161A22.toInt() else 0xFF9AA5B3.toInt())
     }
 
     /** Photos already hold their own shading, so storms and rain need a lighter tint than the drawn clouds. */
@@ -243,23 +304,28 @@ class CloudScene(
         else -> light
     }
 
-    private fun targetClouds(): Int {
-        val cover = when (style) {
-            Style.FAIR -> cloudCover / 100f
-            else -> 0.85f
-        }
-        return (4 + 10 * maxOf(cover, intensity * 0.5f)).toInt().coerceIn(2, MAX_CLOUDS)
+    private fun countInLayer(layer: Int): Int {
+        var c = 0
+        for (i in 0 until clouds.activeCount) if (clouds[i].layer == layer) c++
+        return c
     }
 
     private fun fill(randomX: Boolean) {
-        while (clouds.activeCount < targetClouds()) {
-            val p = clouds.obtain() ?: break
-            spawn(p, randomX)
+        for (l in 0 until LAYERS) {
+            var have = countInLayer(l)
+            while (have < layerTarget[l]) {
+                val p = clouds.obtain() ?: return
+                p.layer = l
+                spawn(p, randomX)
+                have++
+            }
         }
     }
 
+    /** Width of this cloud's picture in screen pixels. */
+    private fun bankWidth(p: Particle) = (if (photos().isNotEmpty()) PHOTO_W else 420f) * p.size
+
     private fun spawn(p: Particle, randomX: Boolean) {
-        p.layer = pickLayer()
         p.variant = Random.nextInt(TEMPLATES)
         val depth = 1f - p.layer * 0.28f
         val big = when (style) { Style.FAIR -> 1f; Style.OVERCAST -> 1.5f; else -> 1.3f }
@@ -269,42 +335,34 @@ class CloudScene(
         val band = when (style) { Style.FAIR -> 0.5f; Style.OVERCAST -> 0.42f; else -> 0.24f }
         val top = when (style) { Style.FAIR -> 0.02f; Style.OVERCAST -> -0.05f; else -> -0.04f }
         p.y = height * (top + (1f - p.layer / (LAYERS - 1f)) * band * 0.6f + Random.nextFloat() * band * 0.4f)
-        val bank = if (photos().isNotEmpty()) PHOTO_W else 420f
-        p.x = if (randomX) Random.nextFloat() * (width + bank * p.size) - bank * p.size else -(bank + 10f) * p.size
+        val bank = bankWidth(p)
+        p.x = when {
+            randomX -> Random.nextFloat() * (width + bank) - bank
+            driftDir > 0f -> -bank - 10f * p.size
+            else -> width + 10f * p.size
+        }
         p.vx = depth * (0.7f + Random.nextFloat() * 0.3f)
         p.phase = Random.nextFloat() * 6.28f
-    }
-
-    /** Keeps roughly even numbers of clouds per layer. */
-    private fun pickLayer(): Int {
-        var best = 0
-        var bestCount = Int.MAX_VALUE
-        val start = Random.nextInt(LAYERS)
-        for (k in 0 until LAYERS) {
-            val l = (start + k) % LAYERS
-            var c = 0
-            for (i in 0 until clouds.activeCount - 1) if (clouds[i].layer == l) c++
-            if (c < bestCount) { bestCount = c; best = l }
-        }
-        return best
     }
 
     override fun update(dtMs: Long) {
         timeMs += dtMs
         val dt = dtMs / 1000f
         val speed = (9f + windKmh * 2f) * unit
-        val target = targetClouds()
+        val dir = driftDir
         for (i in clouds.activeCount - 1 downTo 0) {
             val p = clouds[i]
-            p.x += p.vx * speed * dt
-            if (p.x > width + 20f) {
-                if (clouds.activeCount > target) clouds.release(i) else spawn(p, randomX = false)
+            p.x += p.vx * speed * dt * dir
+            val gone = if (dir > 0f) p.x > width + 20f else p.x + bankWidth(p) < -20f
+            if (gone) {
+                if (countInLayer(p.layer) > layerTarget[p.layer]) clouds.release(i) else spawn(p, randomX = false)
             }
         }
-        if (clouds.activeCount < target) fill(randomX = false)
+        fill(randomX = false)
         for (i in 0 until STREAKS) {
-            streakX[i] += speed * 0.25f * dt
-            if (streakX[i] - streakW[i] > width) streakX[i] = -streakW[i]
+            streakX[i] += speed * 0.25f * dt * dir
+            if (dir > 0f && streakX[i] - streakW[i] > width) streakX[i] = -streakW[i]
+            else if (dir < 0f && streakX[i] + streakW[i] < 0f) streakX[i] = width + streakW[i]
         }
     }
 
@@ -313,12 +371,13 @@ class CloudScene(
             sky.draw(canvas, width, height, skyType, timeOfDay)
             if (style == Style.FAIR || style == Style.OVERCAST) {
                 // The more cloud cover, the greyer and flatter the sky.
-                veilPaint.alpha = (cloudCover / 100f * 0.5f * 255).toInt().coerceIn(0, 140)
+                veilPaint.alpha = (atmo.cover * 0.5f * 255).toInt().coerceIn(0, 140)
                 canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), veilPaint)
             }
         }
         val shift = parallaxPx
-        if (style != Style.FAIR || cloudCover > 50) {
+        // Thin stratus streaks appear once more than half the sky is covered.
+        if (style != Style.FAIR || atmo.cover > 0.5f) {
             for (i in 0 until STREAKS) {
                 canvas.save()
                 canvas.translate(streakX[i] + shift * 0.2f, streakY[i])
@@ -327,9 +386,9 @@ class CloudScene(
                 canvas.restore()
             }
         }
-        if (style == Style.FAIR && timeOfDay != TimeOfDay.NIGHT && cloudCover < 95) {
-            val partly = cloudCover < 55
-            val strength = if (partly) 1f else (1.2f - cloudCover / 100f).coerceIn(0.3f, 0.6f)
+        if (drawSky && style == Style.FAIR && timeOfDay != TimeOfDay.NIGHT && atmo.cover < 0.95f) {
+            val partly = atmo.cover < 0.55f
+            val strength = if (partly) 1f else (1.2f - atmo.cover).coerceIn(0.3f, 0.6f)
             sun.draw(
                 canvas, width * skyState.sunX + shift * 0.3f, height * skyState.sunY, timeMs, strength,
                 showCore = partly, rays = partly,
@@ -351,8 +410,9 @@ class CloudScene(
             val tw = PHOTO_W * p.size
             val th = tw * bmp.height / bmp.width
             dst.set(p.x + shift, p.y, p.x + shift + tw, p.y + th)
-            val cover = if (style == Style.FAIR) (0.45f + cloudCover / 180f).coerceIn(0.45f, 1f) else 1f
-            photoPaints[layer].alpha = (255 * cover * (1f - 0.1f * layer)).toInt()
+            // Thin, patchy cloud (low reported cover at this height) is more see-through.
+            val density = (0.4f + 0.6f * layerCover(layer)).coerceIn(0.4f, 1f)
+            photoPaints[layer].alpha = (255 * density * (1f - 0.1f * layer)).toInt()
             canvas.drawBitmap(bmp, null, dst, photoPaints[layer])
             return
         }
@@ -395,7 +455,8 @@ class CloudScene(
     }
 
     private companion object {
-        const val MAX_CLOUDS = 14
+        const val PER_LAYER = 5
+        const val MAX_CLOUDS = PER_LAYER * 3
         /** Width of a photo cloud bank in drawing units, like the 420 of a drawn cloud. */
         const val PHOTO_W = 760f
         const val LAYERS = 3

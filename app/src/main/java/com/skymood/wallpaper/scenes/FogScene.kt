@@ -52,9 +52,10 @@ class FogScene : BaseScene() {
         val wind = 1f + windKmh / 20f
         for (i in 0 until banks.activeCount) {
             val p = banks[i]
-            p.x += p.vx * wind * dt * (width / 1080f)
+            p.x += p.vx * wind * dt * (width / 1080f) * driftDir
             val half = width * 0.6f * p.size
-            if (p.x - half > width) p.x = -half
+            if (driftDir > 0f) { if (p.x - half > width) p.x = -half }
+            else if (p.x + half < 0f) p.x = width + half
         }
     }
 

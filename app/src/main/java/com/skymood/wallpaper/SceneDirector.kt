@@ -80,13 +80,14 @@ class SceneDirector(
         scene.setIntensity(spec.intensity)
         scene.setEnvironment(spec.windKmh, spec.cloudCover, spec.timeOfDay)
         scene.setSky(spec.sky)
+        scene.setAtmosphere(spec.atmosphere)
         current = scene
         currentType = spec.type
 
         val land = landscapeFor(spec.landscape)
                 // The light comes from the sun by day and from the moon at night.
         val lightX = if (spec.timeOfDay == com.skymood.domain.TimeOfDay.NIGHT) spec.sky.moonX else spec.sky.sunX
-        land.setConditions(spec.timeOfDay, spec.type, spec.windKmh, lightX)
+        land.setConditions(spec.timeOfDay, spec.type, spec.windKmh, lightX, spec.atmosphere.clarityBucket)
         landscape = land
         wildlife.configure(spec, land.groundSlots(), land.wildlifeTint())
 
@@ -189,9 +190,8 @@ class SceneDirector(
         const val FADE_MS = 2000f
 
         fun createScene(type: SceneType): Scene = when (type) {
-            SceneType.CLEAR -> ClearSkyScene()
-            SceneType.PARTLY_CLOUDY -> CloudScene(coverRange = 25..55)
-            SceneType.OVERCAST -> CloudScene(CloudScene.Style.OVERCAST, coverRange = 88..100)
+            SceneType.CLEAR, SceneType.PARTLY_CLOUDY -> ClearSkyScene()
+            SceneType.OVERCAST -> CloudScene(CloudScene.Style.OVERCAST)
             SceneType.DRIZZLE -> RainScene(skyType = SceneType.DRIZZLE, drizzle = true)
             SceneType.HEAVY_RAIN -> RainScene(skyType = SceneType.HEAVY_RAIN)
             SceneType.STORM -> StormScene()

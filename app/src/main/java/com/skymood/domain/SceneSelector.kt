@@ -33,6 +33,8 @@ data class SceneSpec(
     val landscape: LandscapeType = LandscapeType.FOREST,
     val sky: SkyState = SkyState.DEFAULT,
     val wildlife: Boolean = true,
+    /** The state of the sky taken from the weather report: cloud amounts, clarity, darkness, drift. */
+    val atmosphere: Atmosphere = Atmosphere.DEFAULT,
 )
 
 object SceneSelector {
@@ -52,8 +54,11 @@ object SceneSelector {
         val isDay = weather?.isDay ?: TimeOfDay.isDaytimeByClock(hour)
         val override = settings.previewOverride
         val type = override ?: weather?.scene ?: SceneType.CLEAR
+        val atmosphere = atmosphereFor(weather, override)
         val baseIntensity = when {
             override != null -> OVERRIDE_INTENSITY
+            // Fog gets thicker as the reported visibility drops.
+            weather != null && type == SceneType.FOG -> (1.15f - atmosphere.clarity).coerceIn(0.3f, 1.2f)
             weather != null -> weather.intensity
             else -> FALLBACK_INTENSITY
         }
@@ -73,7 +78,21 @@ object SceneSelector {
             landscape = settings.landscape,
             sky = skyFor(weather, settings, timeOfDay, nowMillis),
             wildlife = settings.wildlife,
+            atmosphere = atmosphere,
         )
+    }
+
+    /**
+     * The sky comes from the weather report. A previewed weather type has no report, so it gets
+     * believable numbers for that type, but still follows the real wind direction.
+     */
+    private fun atmosphereFor(weather: WeatherState?, override: SceneType?): Atmosphere = when {
+        override != null -> {
+            val preview = Atmosphere.forPreview(override)
+            if (weather != null) preview.copy(drift = Atmosphere.of(weather).drift) else preview
+        }
+        weather != null -> Atmosphere.of(weather)
+        else -> Atmosphere.DEFAULT
     }
 
     /** Typical sun and moon spots for each time of day, used for previews and tests. */

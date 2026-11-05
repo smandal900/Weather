@@ -64,6 +64,11 @@ class SnowScene : BaseScene() {
         clouds.setEnvironment(windKmh, cloudCover, timeOfDay)
     }
 
+    override fun setAtmosphere(atmosphere: com.skymood.domain.Atmosphere) {
+        super.setAtmosphere(atmosphere)
+        clouds.setAtmosphere(atmosphere)
+    }
+
     override fun setParallax(offset: Float) {
         super.setParallax(offset)
         clouds.setParallax(offset)
@@ -116,7 +121,8 @@ class SnowScene : BaseScene() {
         p.phase = Random.nextFloat() * 6.28f
         p.length = 0.6f + Random.nextFloat() * 1.2f // sway frequency
         p.alpha = depth * (0.65f + Random.nextFloat() * 0.35f)
-        p.x = Random.nextFloat() * width * 1.4f - width * 0.4f
+        // Start upwind of the screen so flakes drifting sideways still cover it.
+        p.x = Random.nextFloat() * width * 1.4f - (if (driftDir > 0f) width * 0.4f else 0f)
         p.y = if (randomY) Random.nextFloat() * height else -p.size * 3f
     }
 
@@ -124,13 +130,14 @@ class SnowScene : BaseScene() {
         timeMs += dtMs
         clouds.update(dtMs)
         val dt = dtMs / 1000f
-        val drift = tan(windAngle)
+        val drift = tan(windAngle) * driftDir
         val target = targetFlakes()
         for (i in flakes.activeCount - 1 downTo 0) {
             val p = flakes[i]
             p.y += p.vy * dt
             p.x += p.vy * drift * dt
-            if (p.y > height + p.size * 3f || p.x > width + 40f) {
+            val outSide = if (driftDir > 0f) p.x > width + 40f else p.x < -40f
+            if (p.y > height + p.size * 3f || outSide) {
                 if (flakes.activeCount > target) flakes.release(i) else spawn(p, randomY = false)
             }
         }

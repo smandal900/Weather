@@ -45,6 +45,12 @@ class StormScene : BaseScene() {
         rain.setEnvironment(windKmh, cloudCover, timeOfDay)
     }
 
+    override fun setAtmosphere(atmosphere: com.skymood.domain.Atmosphere) {
+        super.setAtmosphere(atmosphere)
+        clouds.setAtmosphere(atmosphere)
+        rain.setAtmosphere(atmosphere)
+    }
+
     override fun setParallax(offset: Float) {
         super.setParallax(offset)
         clouds.setParallax(offset)

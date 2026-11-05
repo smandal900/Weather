@@ -110,7 +110,12 @@ class NightScene : BaseScene() {
     override fun drawBackground(canvas: Canvas) {
         sky.draw(canvas, width, height, SceneType.CLEAR, TimeOfDay.NIGHT)
         val shift = parallaxPx
+        // Stars and the Milky Way fade out behind cloud and in hazy or humid air; the moon shines through thinner cloud.
+        val starVis = ((1f - atmo.obscuration * 1.15f) * (0.4f + 0.6f * atmo.clarity)).coerceIn(0f, 1f)
+        val moonVis = ((1f - atmo.obscuration * 0.92f) * (0.55f + 0.45f * atmo.clarity)).coerceIn(0f, 1f)
+        nebulaPaint.alpha = (255 * starVis * starVis).toInt()
         for (i in 0 until NEBULA) {
+            if (nebulaPaint.alpha == 0) break
             nebulaPaint.shader = nebulaShaders[nebulaTint[i]]
             canvas.save()
             canvas.translate(nebulaX[i] + shift * 0.3f, nebulaY[i])
@@ -119,24 +124,27 @@ class NightScene : BaseScene() {
             canvas.drawCircle(0f, 0f, 1f, nebulaPaint)
             canvas.restore()
         }
-        for (i in 0 until stars.activeCount) {
+        if (starVis > 0.02f) for (i in 0 until stars.activeCount) {
             val p = stars[i]
+            // Faint stars vanish first as the air gets less clear.
+            val vis = ((starVis - (1f - p.alpha) * 0.5f) / 0.5f).coerceIn(0f, 1f)
+            if (vis <= 0f) continue
             val tw = 0.55f + 0.45f * sin(timeMs / 1000f * p.vx + p.phase)
             starPaint.color = starTints[p.variant]
-            starPaint.alpha = (255 * p.alpha * tw).toInt()
+            starPaint.alpha = (255 * p.alpha * tw * vis).toInt()
             val s = if (p.layer == 1) shift * 0.4f else shift * 0.7f
             canvas.drawCircle(p.x + s, p.y, p.size, starPaint)
         }
 
-        if (meteor.life > 0f) {
+        if (meteor.life > 0f && starVis > 0.6f) {
             val f = meteor.life / meteor.maxLife
             meteorPaint.alpha = (220 * f).toInt()
             val tail = 0.12f
             canvas.drawLine(meteor.x, meteor.y, meteor.x - meteor.vx * tail, meteor.y - meteor.vy * tail, meteorPaint)
         }
 
-        if (skyState.moonVisible) {
-            moon.draw(canvas, width * skyState.moonX + shift, height * skyState.moonY, skyState.moonPhase)
+        if (skyState.moonVisible && moonVis > 0.03f) {
+            moon.draw(canvas, width * skyState.moonX + shift, height * skyState.moonY, skyState.moonPhase, moonVis)
         }
     }
     private companion object {
