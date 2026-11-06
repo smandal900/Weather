@@ -40,6 +40,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -52,6 +53,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
@@ -68,8 +70,12 @@ import com.skymood.domain.WeatherState
 import com.skymood.skyMood
 import com.skymood.wallpaper.SkyWallpaperService
 import com.skymood.work.WeatherRefreshWorker
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.DateFormat
 import java.util.Calendar
 import java.util.Date
@@ -123,6 +129,24 @@ private fun conditionLabel(c: WeatherCondition) = when (c) {
 
 private val fpsSteps = listOf(15, 30, 60)
 
+/** How long each scene stays up while playing, long enough for the new landscape to be painted. */
+private const val PLAY_STEP_MS = 4_000L
+
+/**
+ * Shows every landscape in every time of day and weather, one after another: the landscape changes
+ * slowest, then the time of day, then the weather. Runs until done or cancelled.
+ */
+private suspend fun playAllScenes(update: suspend ((Settings) -> Settings) -> Unit, report: (String) -> Unit) {
+    val total = LandscapeType.entries.size * TimeOfDay.entries.size * SceneType.entries.size
+    var n = 0
+    for (land in LandscapeType.entries) for (time in TimeOfDay.entries) for (weather in SceneType.entries) {
+        n++
+        update { it.copy(landscape = land, timeOverride = time, previewOverride = weather, changeOnLock = false) }
+        report("$n / $total · ${land.label} · ${time.label} · ${weather.label}")
+        delay(PLAY_STEP_MS)
+    }
+}
+
 @Composable
 private fun SettingsScreen() {
     val context = LocalContext.current
@@ -156,6 +180,16 @@ private fun SettingsScreen() {
         if (weather == null) WeatherRefreshWorker.refreshNow(context)
     }
 
+    var playing by remember { mutableStateOf(false) }
+    var playStatus by remember { mutableStateOf("") }
+    var playJob by remember { mutableStateOf<Job?>(null) }
+    // Keep the screen on while the show runs, so the preview and wallpaper keep changing.
+    val view = LocalView.current
+    DisposableEffect(playing) {
+        view.keepScreenOn = playing
+        onDispose { view.keepScreenOn = false }
+    }
+
     val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
     val spec = SceneSelector.select(weather, settings, hour, System.currentTimeMillis())
 
@@ -175,6 +209,37 @@ private fun SettingsScreen() {
             Button(onClick = { launchWallpaperPicker(context) }, modifier = Modifier.fillMaxWidth()) {
                 Text("Set as wallpaper")
             }
+
+            OutlinedButton(
+                onClick = {
+                    if (playing) playJob?.cancel()
+                    else {
+                        val before = settings
+                        playing = true
+                        playJob = scope.launch {
+                            try {
+                                playAllScenes(repo::updateSettings) { playStatus = it }
+                            } finally {
+                                // Put back whatever the user had chosen before Play.
+                                withContext(NonCancellable) {
+                                    repo.updateSettings {
+                                        it.copy(
+                                            landscape = before.landscape, timeOverride = before.timeOverride,
+                                            previewOverride = before.previewOverride, changeOnLock = before.changeOnLock,
+                                        )
+                                    }
+                                }
+                                playing = false
+                                playStatus = ""
+                            }
+                        }
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(if (playing) "■  Stop" else "▶  Play all scenes")
+            }
+            if (playing) Text(playStatus, style = MaterialTheme.typography.bodySmall)
 
             WeatherCard(weather, refreshing, onRefresh = { WeatherRefreshWorker.refreshNow(context) })
 
