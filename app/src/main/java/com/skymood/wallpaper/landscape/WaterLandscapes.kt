@@ -18,6 +18,7 @@ import kotlin.math.sin
 import com.skymood.wallpaper.fauna.GroundSlot
 import com.skymood.wallpaper.fauna.GroundY
 import com.skymood.wallpaper.fauna.Species
+import kotlin.math.sqrt
 import kotlin.random.Random
 
 private const val DEEP_SEA = 0xFF123E5C.toInt()
@@ -91,8 +92,8 @@ class BeachLandscape : PaintedLandscape() {
         k.shader = null
         val lit = l.distant(l.foliage(0xFF5F9A5E.toInt()), 0.4f); val dark = l.distant(l.foliage(0xFF2F5A3C.toInt()), 0.4f)
         for (i in 2 until n - 2 step 3) {
-            val th = h * (0.012f + rnd.nextFloat() * 0.014f)
-            k.broadleaf(c, xs[i], ys[i] + th * 0.2f, th, k.jitter(lit, rnd, 0.18f), dark, dark, rnd, 0.15f)
+            val th = h * (0.018f + rnd.nextFloat() * 0.018f)
+            drawMiniPalm(c, k, xs[i], ys[i] + th * 0.15f, th, lit, dark, rnd)
         }
         k.haze(c, h * 0.58f, h * 0.68f, 0.45f)
         return bmp
@@ -176,8 +177,14 @@ class BeachLandscape : PaintedLandscape() {
         canvas.restore()
         val palm = sprites["palm"] ?: return
         canvas.save()
-        canvas.translate(w * 0.82f + shift(1f), h * 0.93f)
+        canvas.translate(w * 0.78f + shift(1f), h * 0.89f)
         canvas.rotate(sin(t * (0.8f + windKmh / 30f)) * (0.8f + windKmh / 14f))
+        canvas.drawBitmap(palm, -palm.width * 0.55f, -palm.height + 2f, spritePaint)
+        canvas.restore()
+        canvas.save()
+        canvas.translate(w * 0.90f + shift(1f), h * 0.88f)
+        canvas.scale(0.72f, 0.72f)
+        canvas.rotate(sin(t * (0.8f + windKmh / 30f) + 1.2f) * (0.8f + windKmh / 14f))
         canvas.drawBitmap(palm, -palm.width * 0.55f, -palm.height + 2f, spritePaint)
         canvas.restore()
     }
@@ -923,59 +930,198 @@ class WaterfallLandscape : PaintedLandscape() {
     }
 }
 
-/** A palm tree sprite: curved trunk, a crown of drooping fronds and coconuts. Shared by the tropical landscapes. */
+/** A small tropical palm for distant headlands and ridges. */
+private fun drawMiniPalm(c: Canvas, k: PaintKit, x: Float, y: Float, th: Float, lit: Int, dark: Int, rnd: Random) {
+    val l = k.l
+    val lean = (rnd.nextFloat() - 0.5f) * th * 0.4f
+    val cx = x + lean
+    val cy = y - th
+    k.line.strokeWidth = (th * 0.12f).coerceAtLeast(1.2f * k.unit)
+    k.line.color = l.shade(0xFF5A4632.toInt())
+    c.drawLine(x, y + 1f, cx, cy, k.line)
+    val fronds = 8
+    val len = th * 0.65f
+    k.line.strokeWidth = (th * 0.06f).coerceAtLeast(1.0f * k.unit)
+    for (f in 0 until fronds) {
+        val a = -PI.toFloat() + 0.2f + f * (PI.toFloat() - 0.4f) / (fronds - 1f)
+        val ex = cx + cos(a) * len
+        val ey = cy + sin(a) * len * 0.45f + len * 0.4f
+        val qx = cx + cos(a) * len * 0.5f
+        val qy = cy + sin(a) * len * 0.5f - len * 0.2f
+        k.line.color = if (f % 2 == 0) lit else dark
+        var sx = cx; var sy = cy
+        for (j in 1..4) {
+            val t = j / 4f
+            val px = (1 - t) * (1 - t) * cx + 2 * (1 - t) * t * qx + t * t * ex
+            val py = (1 - t) * (1 - t) * cy + 2 * (1 - t) * t * qy + t * t * ey
+            c.drawLine(sx, sy, px, py, k.line)
+            sx = px; sy = py
+        }
+    }
+}
+
+/** A hyper-realistic coconut tree (coconut palm): curved ringed trunk, swollen base, dense arching drooping fronds, and hanging coconut bunches. */
 internal fun paintPalm(k: PaintKit, seed: Int): Bitmap? {
-    val th = k.h * 0.26f
-    val bw = (th * 1.6f).toInt()
-    val bh = (th * 1.25f).toInt()
+    val th = k.h * 0.28f
+    val bw = (th * 2.5f).toInt()
+    val bh = (th * 2.2f).toInt()
     val (c, bmp) = k.newSprite(bw, bh) ?: return null
     val l = k.l
     val rnd = Random(seed)
-    val bx = bw * 0.55f; val by = bh - 2f
-    val cx = bx - th * 0.2f; val cy = by - th * 1.0f
-    val trunk = l.shade(0xFF7A5A3A.toInt())
+    val bx = bw * 0.5f; val by = bh - 2f
+    val cx = bx - th * 0.2f; val cy = by - th * 1.5f
+
+    // Trunk
+    val trunkBase = l.shade(0xFF888075.toInt()) // Greyish brown
+    val trunkShadow = k.darken(trunkBase, 0.4f)
     var px = bx; var py = by
-    for (i in 1..28) {
-        val t = i / 28f
-        val x = (1 - t) * (1 - t) * bx + 2 * (1 - t) * t * (bx + th * 0.1f) + t * t * cx
-        val y = (1 - t) * (1 - t) * by + 2 * (1 - t) * t * (by - th * 0.55f) + t * t * cy
-        k.line.strokeWidth = th * 0.04f * (1f - 0.45f * t)
-        k.line.color = if (i % 3 == 0) k.darken(trunk, 0.3f) else k.jitter(trunk, rnd, 0.1f)
+    val trunkSteps = 40
+    val xs = FloatArray(trunkSteps + 1)
+    val ys = FloatArray(trunkSteps + 1)
+    xs[0] = bx; ys[0] = by
+    for (i in 1..trunkSteps) {
+        val t = i / trunkSteps.toFloat()
+        val x = (1 - t) * (1 - t) * bx + 2 * (1 - t) * t * (bx + th * 0.12f) + t * t * cx
+        val y = (1 - t) * (1 - t) * by + 2 * (1 - t) * t * (by - th * 0.5f) + t * t * cy
+        xs[i] = x; ys[i] = y
+        // Swollen base
+        val wFrac = if (t < 0.15f) 1.6f - 4.0f * t else 1.0f - 0.2f * t
+        k.line.strokeWidth = th * 0.035f * wFrac
+        k.line.color = if (i % 3 == 0) trunkShadow else k.jitter(trunkBase, rnd, 0.08f)
         c.drawLine(px, py, x, y, k.line)
         px = x; py = y
     }
-    val lit = l.foliage(0xFF4E9A3E.toInt()); val dark = l.foliage(0xFF1E4A24.toInt())
-    for (f in 0 until 11) {
-        val a = -PI.toFloat() + 0.2f + f * (PI.toFloat() - 0.4f) / 10f
-        val len = th * (0.5f + rnd.nextFloat() * 0.12f)
-        val ex = cx + cos(a) * len
-        val ey = cy + sin(a) * len * 0.45f + len * 0.3f
-        val qx = cx + cos(a) * len * 0.55f
-        val qy = cy + sin(a) * len * 0.55f - len * 0.3f
-        k.line.strokeWidth = max(1.5f, th * 0.008f)
-        k.line.color = k.darken(lit, 0.25f)
+    // Leaf scars
+    k.line.strokeWidth = (th * 0.007f).coerceAtLeast(1.2f)
+    k.line.color = k.darken(trunkShadow, 0.3f)
+    for (i in 4 until trunkSteps step 2) {
+        val t = i / trunkSteps.toFloat()
+        val wFrac = if (t < 0.15f) 1.6f - 4.0f * t else 1.0f - 0.2f * t
+        val rw = th * 0.02f * wFrac
+        c.drawLine(xs[i] - rw, ys[i], xs[i] + rw, ys[i] + th * 0.004f, k.line)
+    }
+
+    // Coconuts
+    val greenNut = l.foliage(0xFF5A8022.toInt())
+    val yellowNut = l.foliage(0xFFB5A63A.toInt())
+    val brownNut = l.ground(0xFF5E452B.toInt())
+    
+    for (cluster in 0 until 4) {
+        val clusterAngle = cluster * (PI.toFloat() * 0.5f) + rnd.nextFloat() * 0.5f
+        val clx = cx + cos(clusterAngle) * th * 0.03f
+        val cly = cy + sin(clusterAngle) * th * 0.02f + th * 0.02f
+        
+        k.line.strokeWidth = (th * 0.006f).coerceAtLeast(1.0f)
+        k.line.color = k.darken(greenNut, 0.3f)
+        c.drawLine(cx, cy, clx, cly, k.line)
+        
+        val nutCount = 3 + rnd.nextInt(4)
+        for (n in 0 until nutCount) {
+            val offsetA = n * (PI.toFloat() * 2f / nutCount) + rnd.nextFloat() * 0.5f
+            val dist = th * (0.015f + 0.012f * rnd.nextFloat())
+            val nx = clx + cos(offsetA) * dist
+            val ny = cly + sin(offsetA) * dist + th * 0.01f
+            val nr = th * (0.022f + 0.008f * rnd.nextFloat())
+            
+            val baseCol = when (rnd.nextInt(5)) {
+                0, 1 -> greenNut
+                2, 3 -> yellowNut
+                else -> brownNut
+            }
+            k.fill.color = k.darken(baseCol, 0.4f)
+            c.drawCircle(nx, ny, nr, k.fill)
+            k.fill.color = k.jitter(baseCol, rnd, 0.08f)
+            c.drawCircle(nx - nr * 0.15f, ny - nr * 0.15f, nr * 0.82f, k.fill)
+            k.fill.color = k.alpha(k.lighten(baseCol, 0.3f), 150)
+            c.drawCircle(nx - nr * 0.3f, ny - nr * 0.3f, nr * 0.4f, k.fill)
+        }
+    }
+
+    // Fronds (Crown)
+    val freshLit = l.foliage(0xFF7CB838.toInt())
+    val freshDark = l.foliage(0xFF326B22.toInt())
+    val matureLit = l.foliage(0xFF4C8C24.toInt())
+    val matureDark = l.foliage(0xFF184A15.toInt())
+    val dyingCol = l.ground(0xFFB59A30.toInt())
+    val deadCol = l.ground(0xFF755C2F.toInt())
+    
+    val frondCount = 48 // Very dense realistic canopy
+    for (f in 0 until frondCount) {
+        val u = f / (frondCount - 1f) // 0 (top/young) to 1 (bottom/old)
+        val state = when {
+            u < 0.25f -> 0
+            u < 0.70f -> 1
+            u < 0.85f -> 2
+            else -> 3
+        }
+
+        val spreadA = rnd.nextFloat() * PI.toFloat() * 2f
+        val elevA = -PI.toFloat() * 0.48f + u.pow(0.8f) * PI.toFloat() * 1.15f // Curve from -86 deg to +120 deg
+        
+        val len = th * (0.4f + rnd.nextFloat() * 0.3f)
+        val ex = cx + cos(spreadA) * cos(elevA) * len
+        val ey = cy + sin(elevA) * len
+        
+        val initVx = cos(spreadA) * cos(elevA)
+        val initVy = sin(elevA)
+        val qx = cx + initVx * len * 0.6f
+        val qy = cy + initVy * len * 0.6f - th * 0.15f * (1f - u)
+
+        val (baseLit, baseDark) = when (state) {
+            0 -> freshLit to freshDark
+            1 -> matureLit to matureDark
+            2 -> k.mix(matureLit, dyingCol, 0.6f) to k.mix(matureDark, dyingCol, 0.6f)
+            else -> deadCol to k.darken(deadCol, 0.3f)
+        }
+        
+        val sunSide = if (cos(spreadA) > 0) 1f else -1f
+        val sunExposure = (0.5f + 0.5f * (if (sunSide == k.sun) 1f else -1f) - u * 0.3f).coerceIn(0f, 1f)
+        val frondCol = k.jitter(k.mix(baseDark, baseLit, sunExposure), rnd, 0.1f)
+        
         var sx = cx; var sy = cy
-        for (j in 1..24) {
-            val t = j / 24f
+        val steps = if (state == 3) 24 else 48
+        val curveLen = sqrt((ex - cx)*(ex - cx) + (ey - cy)*(ey - cy)).coerceAtLeast(0.1f)
+
+        for (j in 1..steps) {
+            val t = j / steps.toFloat()
             val x = (1 - t) * (1 - t) * cx + 2 * (1 - t) * t * qx + t * t * ex
             val y = (1 - t) * (1 - t) * cy + 2 * (1 - t) * t * qy + t * t * ey
+            
             val tx = x - sx; val ty = y - sy
-            val tl = kotlin.math.sqrt(tx * tx + ty * ty).coerceAtLeast(0.001f)
-            val nx = -ty / tl; val nyv = tx / tl
-            val leaf = len * 0.2f * (1f - 0.55f * t) * (0.8f + rnd.nextFloat() * 0.4f)
-            val sunSide = if (a < -PI.toFloat() / 2f) -1f else 1f
-            val tone = (0.5f + 0.4f * (if (sunSide == k.sun) 1f else -1f) + (rnd.nextFloat() - 0.5f) * 0.3f).coerceIn(0f, 1f)
-            k.line.color = k.jitter(k.mix(dark, lit, tone), rnd, 0.12f)
-            k.line.strokeWidth = max(1f, th * 0.006f)
-            c.drawLine(x, y, x + nx * leaf + tx / tl * leaf * 0.5f, y + nyv * leaf + ty / tl * leaf * 0.5f + leaf * 0.3f, k.line)
-            c.drawLine(x, y, x - nx * leaf + tx / tl * leaf * 0.5f, y - nyv * leaf + ty / tl * leaf * 0.5f + leaf * 0.3f, k.line)
+            val tl = sqrt(tx * tx + ty * ty).coerceAtLeast(0.001f)
+            
+            // Rachis
+            k.line.strokeWidth = th * 0.008f * (1f - t)
+            k.line.color = if (state < 2) k.mix(frondCol, l.foliage(0xFF9ACD32.toInt()), 0.5f) else frondCol
+            c.drawLine(sx, sy, x, y, k.line)
+
+            // Leaflets (Pinnae)
+            val leafLen = curveLen * 0.28f * sin(t * PI.toFloat()) * (0.6f + rnd.nextFloat() * 0.6f)
+            k.line.strokeWidth = (th * 0.004f).coerceAtLeast(1f)
+            k.line.color = frondCol
+
+            val nx1 = -ty / tl; val ny1 = tx / tl
+            val nx2 = ty / tl; val ny2 = -tx / tl
+
+            val gravWeight = 1.0f + u * 2.0f + t * 1.5f
+            
+            var lx1 = (nx1 * 0.5f + (tx / tl) * 0.3f)
+            var ly1 = (ny1 * 0.5f + (ty / tl) * 0.3f) + gravWeight
+            val lLen1 = sqrt(lx1 * lx1 + ly1 * ly1).coerceAtLeast(0.001f)
+            lx1 = (lx1 / lLen1) * leafLen
+            ly1 = (ly1 / lLen1) * leafLen
+            
+            var lx2 = (nx2 * 0.5f + (tx / tl) * 0.3f)
+            var ly2 = (ny2 * 0.5f + (ty / tl) * 0.3f) + gravWeight
+            val lLen2 = sqrt(lx2 * lx2 + ly2 * ly2).coerceAtLeast(0.001f)
+            lx2 = (lx2 / lLen2) * leafLen
+            ly2 = (ly2 / lLen2) * leafLen
+
+            c.drawLine(x, y, x + lx1, y + ly1, k.line)
+            c.drawLine(x, y, x + lx2, y + ly2, k.line)
+
             sx = x; sy = y
         }
-        k.line.strokeWidth = max(1.5f, th * 0.008f)
-        k.line.color = k.darken(lit, 0.3f)
-        c.drawLine(cx, cy, ex, ey, k.line)
     }
-    k.fill.color = k.darken(trunk, 0.45f)
-    for (i in 0 until 3) c.drawCircle(cx + (i - 1) * th * 0.03f, cy + th * 0.03f, th * 0.025f, k.fill)
     return bmp
 }
