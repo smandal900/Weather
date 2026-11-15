@@ -22,10 +22,15 @@ class DebugSceneReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val weather = intent.getStringExtra("weather")
         val time = intent.getStringExtra("time")
+        val hour = intent.getStringExtra("hour")
         val landscape = intent.getStringExtra("landscape")
         val phase = intent.getStringExtra("phase")
         val wildlife = intent.getStringExtra("wildlife")
         val shuffle = intent.getStringExtra("shuffle")
+        val dayBrightness = intent.getStringExtra("day_brightness")?.toFloatOrNull()
+        val nightBrightness = intent.getStringExtra("night_brightness")?.toFloatOrNull()
+        val event = intent.getStringExtra("event")
+        val progress = intent.getStringExtra("progress")?.toFloatOrNull()
         val pending = goAsync()
         CoroutineScope(Dispatchers.IO).launch {
             try {
@@ -33,10 +38,15 @@ class DebugSceneReceiver : BroadcastReceiver() {
                     var out = s
                     if (weather != null) out = out.copy(previewOverride = parse<SceneType>(weather))
                     if (time != null) out = out.copy(timeOverride = parse<TimeOfDay>(time))
+                    if (hour != null) out = out.copy(hourOverride = if (hour.equals("auto", ignoreCase = true)) null else hour.toIntOrNull()?.coerceIn(0, 23))
                     if (landscape != null) parse<LandscapeType>(landscape)?.let { out = out.copy(landscape = it) }
                     if (phase != null) out = out.copy(moonPhaseOverride = phase.toFloatOrNull())
                     if (wildlife != null) out = out.copy(wildlife = wildlife != "off")
                     if (shuffle != null) out = out.copy(changeOnLock = shuffle != "off")
+                    if (dayBrightness != null) out = out.copy(dayBrightness = dayBrightness)
+                    if (nightBrightness != null) out = out.copy(nightBrightness = nightBrightness)
+                    if (event != null) out = out.copy(skyEvent = parse<com.skymood.domain.SkyEvent>(event) ?: com.skymood.domain.SkyEvent.NONE)
+                    if (progress != null) out = out.copy(eclipseProgress = progress.coerceIn(0f, 1f))
                     out
                 }
             } finally {

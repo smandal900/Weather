@@ -34,7 +34,8 @@ class GroundSlot(
 )
 
 /**
- * Birds, bats, fireflies and animals that fit the weather, time of day and landscape.
+ * Birds, bats, fireflies and animals that fit the weather, time of day and landscape, plus the
+ * flowers, bees, butterflies and kingfisher of the [Meadow].
  *
  * Birds are feathered silhouettes that flap, glide and bank into their turns; four-legged
  * animals have a real walk cycle (knees and hocks bend, feet lift and slide back), speed up and
@@ -84,6 +85,7 @@ class Wildlife {
     private val sprites = HashMap<Int, Bitmap>()
     private val spritePaint = Paint(Paint.FILTER_BITMAP_FLAG)
     private val rnd = Random(System.nanoTime())
+    private val meadow = Meadow()
 
     fun resize(width: Int, height: Int) {
         if (width.toFloat() == w && height.toFloat() == h) return
@@ -92,15 +94,18 @@ class Wildlife {
         sprites.clear()
         for (kind in birdFrames) for (i in kind.indices) { kind[i]?.recycle(); kind[i] = null }
         lastKey = -1
+        meadow.resize(width, height)
     }
 
     fun setParallax(offset: Float) {
         parallaxPx = -offset * w * 0.04f
+        meadow.setParallax(offset)
     }
 
     /** Re-evaluates what lives here; cheap when nothing relevant changed. */
-    fun configure(spec: SceneSpec, groundSlots: List<GroundSlot>, tintColor: Int) {
+    fun configure(spec: SceneSpec, groundSlots: List<GroundSlot>, tintColor: Int, meadowSpec: MeadowSpec? = null) {
         if (w <= 0f) return
+        meadow.configure(spec, meadowSpec, tintColor)
         spritePaint.colorFilter = PorterDuffColorFilter(tintColor, PorterDuff.Mode.MULTIPLY)
         val key = ((spec.landscape.ordinal * 8 + spec.timeOfDay.ordinal) * 16 + spec.type.ordinal) * 2 + if (spec.wildlife) 1 else 0
         if (key == lastKey) { slots = groundSlots; return }
@@ -265,6 +270,7 @@ class Wildlife {
             }
         }
         updateGround(dt)
+        meadow.update(dt)
     }
 
     /** Birds alternate bursts of flapping with glides. */
@@ -304,15 +310,15 @@ class Wildlife {
             gtimer[g] -= dt
             when (slot.species) {
                 Species.DOLPHIN -> {
-                    if (gu[g] < 0f) {
+                    if (gu[g] < -0.3f) {
                         if (gtimer[g] <= 0f) {
-                            gu[g] = 0f
+                            gu[g] = -0.3f
                             gdir[g] = if (rnd.nextBoolean()) 1f else -1f
-                            gstart[g] = x0 + (x1 - x0) * (0.25f + 0.5f * rnd.nextFloat())
+                            gstart[g] = x0 + (x1 - x0) * (0.2f + 0.6f * rnd.nextFloat())
                         }
                     } else {
-                        gu[g] += dt / 1.8f
-                        if (gu[g] >= 1f) { gu[g] = -1f; gtimer[g] = 7f + rnd.nextFloat() * 9f }
+                        gu[g] += dt / 1.6f
+                        if (gu[g] >= 1.3f) { gu[g] = -0.5f; gtimer[g] = 2.0f + rnd.nextFloat() * 4.0f }
                     }
                 }
                 Species.DUCK -> {
@@ -410,24 +416,131 @@ class Wildlife {
     /** Animals, fireflies and swimmers, drawn on top of the landscape. */
     fun drawGround(canvas: Canvas) {
         if (w <= 0f) return
+        meadow.drawFlowers(canvas)
         for (g in 0 until groundCount) {
             val slot = slots.getOrNull(gSlot[g]) ?: continue
             val sp = slot.species
             val k = slot.scale / BAKE_SCALE
             if (sp == Species.DOLPHIN) {
-                val u = gu[g]
-                if (u < 0f) continue
+                val leaderU = gu[g]
+                if (leaderU < -0.3f) continue
                 val bmp = sprite(sp, 0) ?: continue
-                val span = w * 0.16f
-                val x = gstart[g] + gdir[g] * (u - 0.5f) * span
-                val surface = slot.y.at(x)
-                val y = surface - sin(u * PI.toFloat()) * h * 0.055f * slot.scale
-                canvas.save()
-                canvas.translate(x + parallaxPx * 0.5f, y)
-                canvas.scale(gdir[g] * k, k)
-                canvas.rotate(-cos(u * PI.toFloat()) * 38f)
-                canvas.drawBitmap(bmp, -bmp.width / 2f, -bmp.height / 2f, spritePaint)
-                canvas.restore()
+
+                val podOffsets = floatArrayOf(0f, -0.22f)
+                val podScales = floatArrayOf(1.0f, 0.8f)
+                val podYOffsets = floatArrayOf(0f, h * 0.010f)
+
+                for (p in 0 until 2) {
+                    val u = leaderU + podOffsets[p]
+                    val dir = gdir[g]
+                    val span = w * 0.42f
+                    val curScale = k * podScales[p]
+
+                    // Surface Swimming / Fin Breaching Phase
+                    if ((u in -0.3f..0f) || (u in 1.0f..1.3f)) {
+                        val swimU = if (u < 0f) u else (u - 1.0f)
+                        val x = gstart[g] + dir * (swimU - 0.5f) * span
+                        val surfaceY = slot.y.at(x) + podYOffsets[p]
+                        val finY = surfaceY + 12f * unit
+
+                        canvas.save()
+                        canvas.clipRect(-w * 0.08f, 0f, w * 1.08f, surfaceY + 2f * unit)
+                        canvas.translate(x + parallaxPx * 0.5f, finY)
+                        if (dir < 0f) {
+                            canvas.scale(-curScale, curScale)
+                        } else {
+                            canvas.scale(curScale, curScale)
+                        }
+                        canvas.drawBitmap(bmp, -bmp.width / 2f, -bmp.height / 2f, spritePaint)
+                        canvas.restore()
+
+                        val wakePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                            color = 0xAAFFFFFF.toInt()
+                            style = Paint.Style.STROKE
+                            strokeWidth = 1.8f * unit
+                        }
+                        canvas.drawLine(
+                            x - dir * 15f * unit, surfaceY,
+                            x - dir * 35f * unit, surfaceY + sin(time * 5f) * 2f * unit,
+                            wakePaint
+                        )
+                        continue
+                    }
+
+                    if (u !in 0f..1f) continue
+
+                    // Leaping Arc Phase
+                    val x = gstart[g] + dir * (u - 0.5f) * span
+                    val surfaceY = slot.y.at(x) + podYOffsets[p]
+                    val jumpHeight = h * 0.075f * slot.scale * podScales[p]
+                    val y = surfaceY - sin(u * PI.toFloat()) * jumpHeight
+
+                    val jumpFrame = when {
+                        u < 0.28f -> 0
+                        u < 0.72f -> 1
+                        else -> 2
+                    }
+                    val frameBmp = sprite(sp, jumpFrame) ?: bmp
+
+                    // Smooth trajectory pitch (always keeps dolphin upright)
+                    val climbSlope = cos(u * PI.toFloat())
+                    val maxPitchDeg = 40f
+
+                    canvas.save()
+                    canvas.clipRect(-w * 0.08f, 0f, w * 1.08f, surfaceY + 6f * unit)
+                    canvas.translate(x + parallaxPx * 0.5f, y)
+
+                    if (dir > 0f) {
+                        val pitch = -maxPitchDeg * climbSlope
+                        canvas.rotate(pitch)
+                        canvas.scale(curScale, curScale)
+                    } else {
+                        val pitch = maxPitchDeg * climbSlope
+                        canvas.rotate(pitch)
+                        canvas.scale(-curScale, curScale)
+                    }
+
+                    canvas.drawBitmap(frameBmp, -frameBmp.width / 2f, -frameBmp.height / 2f, spritePaint)
+                    canvas.restore()
+
+                    val foamPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                        color = 0xFFFFFFFF.toInt()
+                        style = Paint.Style.FILL
+                    }
+
+                    val emergeX = gstart[g] - dir * 0.5f * span
+                    val entryX = gstart[g] + dir * 0.5f * span
+
+                    if (u in 0.01f..0.22f) {
+                        val pulse = sin((u / 0.22f) * PI.toFloat())
+                        foamPaint.alpha = (210 * pulse).toInt().coerceIn(0, 255)
+                        canvas.drawOval(
+                            emergeX - 22f * unit * pulse, surfaceY - 3f * unit,
+                            emergeX + 22f * unit * pulse, surfaceY + 5f * unit,
+                            foamPaint
+                        )
+                        repeat(5) { idx ->
+                            val dropX = emergeX + (idx - 2.0f) * 6f * unit
+                            val dropY = surfaceY - (8f + idx * 3f) * unit * pulse
+                            canvas.drawCircle(dropX, dropY, 2.8f * unit * pulse, foamPaint)
+                        }
+                    }
+
+                    if (u in 0.78f..0.99f) {
+                        val pulse = sin(((u - 0.78f) / 0.21f) * PI.toFloat())
+                        foamPaint.alpha = (210 * pulse).toInt().coerceIn(0, 255)
+                        canvas.drawOval(
+                            entryX - 24f * unit * pulse, surfaceY - 3f * unit,
+                            entryX + 24f * unit * pulse, surfaceY + 5f * unit,
+                            foamPaint
+                        )
+                        repeat(6) { idx ->
+                            val dropX = entryX + (idx - 2.5f) * 6f * unit
+                            val dropY = surfaceY - (10f + idx * 2.5f) * unit * pulse
+                            canvas.drawCircle(dropX, dropY, 3.0f * unit * pulse, foamPaint)
+                        }
+                    }
+                }
                 continue
             }
             val frame = when {
@@ -456,6 +569,7 @@ class Wildlife {
             glowPaint.alpha = (255 * a).toInt()
             canvas.drawCircle(ffx[i] + parallaxPx * 0.8f, ffy[i], 2f * unit, glowPaint)
         }
+        meadow.drawFlyers(canvas)
     }
 
     private fun sprite(sp: Species, frame: Int): Bitmap? {

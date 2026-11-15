@@ -10,13 +10,26 @@ import android.graphics.RadialGradient
 import android.graphics.Shader
 import kotlin.math.max
 import kotlin.math.sin
+import com.skymood.wallpaper.fauna.FlowerBed
 import com.skymood.wallpaper.fauna.GroundSlot
+import com.skymood.wallpaper.fauna.MeadowSpec
 import com.skymood.wallpaper.fauna.GroundY
 import com.skymood.wallpaper.fauna.Species
 import kotlin.random.Random
 
 /** Dense conifer forest in front of a misty mountain range, framed by big pines and a meadow. */
 class ForestLandscape : PaintedLandscape() {
+    private var meadowSpec: MeadowSpec? = null
+    private var meadowFor = 0
+    override fun meadow(): MeadowSpec {
+        if (meadowSpec == null || meadowFor != width * 31 + height) {
+            meadowFor = width * 31 + height
+            val h = height.toFloat()
+            val r = Ridge(width, h * 0.9f, h * 0.035f, false, 10)
+            meadowSpec = MeadowSpec(listOf(FlowerBed(0.02f, 0.98f, GroundY { x -> r.yAt(x) }, h * 0.06f, 14)))
+        }
+        return meadowSpec!!
+    }
     override val layers = arrayOf(PaintLayer(0.45f, 0.82f, 0.1f), PaintLayer(0.6f, 1f, 0.5f), PaintLayer(0.5f, 1f, 1f))
 
     private var slots: List<GroundSlot> = emptyList()
@@ -182,6 +195,17 @@ class MountainLandscape : PaintedLandscape() {
 
 /** Gentle rolling hills: patchwork fields in the distance, scattered leafy trees, big oaks in front. */
 class HillLandscape : PaintedLandscape() {
+    private var meadowSpec: MeadowSpec? = null
+    private var meadowFor = 0
+    override fun meadow(): MeadowSpec {
+        if (meadowSpec == null || meadowFor != width * 31 + height) {
+            meadowFor = width * 31 + height
+            val h = height.toFloat()
+            val r = Ridge(width, h * 0.9f, h * 0.045f, false, 10)
+            meadowSpec = MeadowSpec(listOf(FlowerBed(0.02f, 0.98f, GroundY { x -> r.yAt(x) }, h * 0.07f, 18)))
+        }
+        return meadowSpec!!
+    }
     override val layers = arrayOf(PaintLayer(0.5f, 0.86f, 0.1f), PaintLayer(0.6f, 1f, 0.5f), PaintLayer(0.32f, 1f, 1f))
 
     private var slots: List<GroundSlot> = emptyList()
@@ -259,6 +283,17 @@ class HillLandscape : PaintedLandscape() {
 
 /** A meadow with grass that sways in the wind, in front of a leafy tree line and a big oak. */
 class GrassFieldLandscape : PaintedLandscape() {
+    private var meadowSpec: MeadowSpec? = null
+    private var meadowFor = 0
+    override fun meadow(): MeadowSpec {
+        if (meadowSpec == null || meadowFor != width * 31 + height) {
+            meadowFor = width * 31 + height
+            val h = height.toFloat()
+            val r = Ridge(width, h * 0.78f, h * 0.015f, false, 15)
+            meadowSpec = MeadowSpec(listOf(FlowerBed(0.02f, 0.98f, GroundY { x -> r.yAt(x) + h * 0.04f }, h * 0.14f, 28)))
+        }
+        return meadowSpec!!
+    }
     override val layers = arrayOf(PaintLayer(0.55f, 0.8f, 0.15f), PaintLayer(0.30f, 1f, 0.6f))
 
     private var slots: List<GroundSlot> = emptyList()
@@ -305,7 +340,57 @@ class GrassFieldLandscape : PaintedLandscape() {
         lightBlade.color = l.foliage(0xFF86C15A.toInt())
     }
 
-    override fun paintAll(k: PaintKit) = PaintResult(arrayOf(far(k), meadow(k)))
+    override fun paintAll(k: PaintKit): PaintResult {
+        val oak = oak(k)
+        return PaintResult(arrayOf(far(k), meadow(k)), if (oak != null) mapOf("oak" to oak) else emptyMap())
+    }
+
+    /** The big oak on its own sprite (trunk foot at the bottom centre) so it can bend in the wind. */
+    private fun oak(k: PaintKit): Bitmap? {
+        val th = k.h * OAK_HEIGHT
+        val (c, bmp) = k.newSprite((th * 1.1f).toInt(), (th * 1.08f).toInt()) ?: return null
+        val l = k.l
+        k.broadleaf(
+            c, bmp.width / 2f, bmp.height - 2f, th, l.foliage(0xFF7CC862.toInt()), l.foliage(0xFF2A5A2A.toInt()),
+            l.shade(0xFF4E3A28.toInt()), Random(33), 1f,
+        )
+        return bmp
+    }
+
+    private val oakPaint = Paint(Paint.FILTER_BITMAP_FLAG)
+    private val oakMesh = FloatArray((OAK_COLS + 1) * (OAK_ROWS + 1) * 2)
+
+    /**
+     * Draws the oak through a mesh whose vertices swing further the higher they are above the
+     * trunk's foot, with a faster flutter on top, so the trunk barely moves, the limbs bend and
+     * the leaves ripple. The stronger the wind, the wider and quicker the motion.
+     */
+    private fun drawOak(canvas: Canvas) {
+        val oak = sprites["oak"] ?: return
+        val t = timeMs / 1000f
+        val sw = oak.width.toFloat(); val sh = oak.height.toFloat()
+        val th = height * OAK_HEIGHT
+        val amp = (0.006f + windKmh * 0.0016f).coerceAtMost(0.06f) * th
+        val freq = 0.7f + windKmh / 25f
+        val left = width * 0.84f + shift(0.6f) - sw / 2f
+        val top = height * 0.8f - sh + 2f
+        var n = 0
+        for (r in 0..OAK_ROWS) {
+            val y = sh * r / OAK_ROWS
+            val f = 1f - y / sh                      // 0 at the foot, 1 at the crown top
+            val f2 = f * f
+            for (col in 0..OAK_COLS) {
+                val x = sw * col / OAK_COLS
+                val swing = sin(t * freq) * 0.65f + 0.35f
+                val flutter = sin(t * freq * 2.6f + x * 0.045f + y * 0.03f)
+                val dx = amp * (f2 * swing + 0.22f * f * f * flutter)
+                val dy = amp * 0.1f * f2 * sin(t * freq * 2.1f + x * 0.05f)
+                oakMesh[n++] = left + x + dx
+                oakMesh[n++] = top + y + dy
+            }
+        }
+        canvas.drawBitmapMesh(oak, OAK_COLS, OAK_ROWS, oakMesh, 0, null, 0, oakPaint)
+    }
 
     private fun far(k: PaintKit): Bitmap? {
         val (c, bmp) = k.newLayer(layers[0]) ?: return null
@@ -336,12 +421,11 @@ class GrassFieldLandscape : PaintedLandscape() {
         k.hill(c, ridge, h, l.ground(0xFF62A046.toInt()), l.ground(0xFF2D5E22.toInt()), rnd, 900)
         k.fields(c, ridge, h, rnd, 4)
         val ox = w * 0.84f
-        val th = h * 0.26f
+        val th = h * OAK_HEIGHT
         val gy = h * 0.8f
         k.shader = RadialGradient(ox, gy, th * 0.3f, 0x66000000, 0, Shader.TileMode.CLAMP)
         c.drawCircle(ox, gy, th * 0.3f, k.fill)
         k.shader = null
-        k.broadleaf(c, ox, gy, th, l.foliage(0xFF7CC862.toInt()), l.foliage(0xFF2A5A2A.toInt()), l.shade(0xFF4E3A28.toInt()), rnd, 1f)
         k.grass(c, ridge, h, 1400, l.ground(0xFF8FC060.toInt()), l.ground(0xFF234A1C.toInt()), rnd)
         k.flowers(c, ridge, h, 160, rnd)
         return bmp
@@ -352,6 +436,7 @@ class GrassFieldLandscape : PaintedLandscape() {
         val t = timeMs / 1000f
         val gust = 1f + windKmh / 15f
         val sway = (0.15f + windKmh / 40f).coerceAtMost(1.4f)
+        drawOak(canvas)
         val s = shift(1f)
         var d = 0; var li = 0
         for (i in 0 until BLADES) {
@@ -371,6 +456,9 @@ class GrassFieldLandscape : PaintedLandscape() {
 
     private companion object {
         const val BLADES = 420
+        const val OAK_HEIGHT = 0.26f
+        const val OAK_COLS = 8
+        const val OAK_ROWS = 12
     }
 }
 
@@ -450,6 +538,17 @@ class SnowyPeaksLandscape : PaintedLandscape() {
 
 /** Farmland with a small village: houses with lit windows after dark, a church, trees and fences. */
 class VillageLandscape : PaintedLandscape() {
+    private var meadowSpec: MeadowSpec? = null
+    private var meadowFor = 0
+    override fun meadow(): MeadowSpec {
+        if (meadowSpec == null || meadowFor != width * 31 + height) {
+            meadowFor = width * 31 + height
+            val h = height.toFloat()
+            val r = Ridge(width, h * 0.9f, h * 0.02f, false, 21)
+            meadowSpec = MeadowSpec(listOf(FlowerBed(0.02f, 0.98f, GroundY { x -> r.yAt(x) }, h * 0.07f, 16)))
+        }
+        return meadowSpec!!
+    }
     override val layers = arrayOf(PaintLayer(0.5f, 0.86f, 0.1f), PaintLayer(0.62f, 0.96f, 0.55f), PaintLayer(0.8f, 1f, 1f))
 
     private var slots: List<GroundSlot> = emptyList()

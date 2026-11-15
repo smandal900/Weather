@@ -33,6 +33,7 @@ abstract class PaintedLandscape : Landscape() {
         private set
 
     private var bitmaps: Array<Bitmap?> = emptyArray()
+    private var meshes: Array<WindMesh?> = emptyArray()
     private val blit = Paint(Paint.FILTER_BITMAP_FLAG)
     private val main = Handler(Looper.getMainLooper())
     @Volatile private var generation = 0
@@ -64,6 +65,12 @@ abstract class PaintedLandscape : Landscape() {
                 android.util.Log.e("PaintedLandscape", "painting failed", e)
                 null
             } ?: return@execute
+            val built = Array(layers.size) { i ->
+                val bmp = result.bitmaps.getOrNull(i) ?: return@Array null
+                val marks = kit.marksByLayer[layers[i]] ?: return@Array null
+                if (marks.isEmpty()) null
+                else WindMesh(bmp.width, bmp.height, marks, kit.margin, h * layers[i].top).takeIf { it.hasTrees }
+            }
             main.post {
                 if (gen != generation) {
                     result.bitmaps.forEach { it?.recycle() }
@@ -73,6 +80,7 @@ abstract class PaintedLandscape : Landscape() {
                 val oldBitmaps = bitmaps
                 val oldSprites = sprites
                 bitmaps = result.bitmaps
+                meshes = built
                 sprites = result.sprites
                 oldBitmaps.forEach { it?.recycle() }
                 oldSprites.values.forEach { it.recycle() }
@@ -86,7 +94,16 @@ abstract class PaintedLandscape : Landscape() {
         for (i in layers.indices) {
             drawAnimated(canvas, i)
             val bmp = b.getOrNull(i) ?: continue
-            canvas.drawBitmap(bmp, -m + shift(layers[i].depth), height * layers[i].top, blit)
+            val mesh = meshes.getOrNull(i)
+            if (mesh == null) {
+                canvas.drawBitmap(bmp, -m + shift(layers[i].depth), height * layers[i].top, blit)
+            } else {
+                mesh.update(timeMs / 1000f, windKmh)
+                canvas.save()
+                canvas.translate(-m + shift(layers[i].depth), height * layers[i].top)
+                canvas.drawBitmapMesh(bmp, mesh.cols, mesh.rows, mesh.verts, 0, null, 0, blit)
+                canvas.restore()
+            }
         }
         drawAnimated(canvas, layers.size)
     }

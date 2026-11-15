@@ -26,6 +26,9 @@ class PaintLayer(val top: Float, val bottom: Float, val depth: Float)
 
 class PaintResult(val bitmaps: Array<Bitmap?>, val sprites: Map<String, Bitmap> = emptyMap())
 
+/** A tree painted into a layer, in screen coordinates; the wind mesh bends the layer around it. */
+class TreeMark(val x: Float, val baseY: Float, val height: Float, val halfWidth: Float, val stiffness: Float)
+
 /**
  * Drawing helpers for the painted landscapes. A kit belongs to one background painting job and
  * carries a private [Lighting] snapshot, so it never touches state used by the main thread.
@@ -51,6 +54,14 @@ class PaintKit(val width: Int, val height: Int, val l: Lighting) {
         get() = fill.shader
         set(v) { fill.alpha = 255; fill.shader = v }
 
+    /** Trees painted into each layer, so the layer can be bent in the wind afterwards. */
+    val marksByLayer = HashMap<PaintLayer, List<TreeMark>>()
+    private var markCanvas: Canvas? = null
+    private var curMarks: ArrayList<TreeMark>? = null
+
+    private fun markTree(c: Canvas, x: Float, baseY: Float, th: Float, halfWidth: Float, stiffness: Float) {
+        if (c === markCanvas) curMarks?.add(TreeMark(x, baseY, th, halfWidth, stiffness))
+    }
     fun newLayer(layer: PaintLayer): Pair<Canvas, Bitmap>? {
         val bw = (w + margin * 2).toInt()
         val bh = (h * (layer.bottom - layer.top)).toInt().coerceAtLeast(1)
@@ -58,6 +69,10 @@ class PaintKit(val width: Int, val height: Int, val l: Lighting) {
         val c = Canvas(bmp)
         // Work in screen coordinates: x from -margin, y from 0 at the top of the screen.
         c.translate(margin, -h * layer.top)
+        val list = ArrayList<TreeMark>()
+        marksByLayer[layer] = list
+        markCanvas = c
+        curMarks = list
         return c to bmp
     }
 
@@ -99,6 +114,7 @@ class PaintKit(val width: Int, val height: Int, val l: Lighting) {
 
     /** Tiny distant pine: a few ragged tiers, enough at this size. */
     fun simplePine(c: Canvas, x: Float, baseY: Float, th: Float, lit: Int, dark: Int, rnd: Random) {
+        markTree(c, x, baseY, th, th * 0.22f, 0.6f)
         val path = Path()
         val tiers = 5
         val maxHalf = th * 0.22f
@@ -131,6 +147,7 @@ class PaintKit(val width: Int, val height: Int, val l: Lighting) {
         c: Canvas, x: Float, baseY: Float, th: Float, lit: Int, dark: Int, trunk: Int,
         rnd: Random, detail: Float,
     ) {
+        markTree(c, x, baseY, th, th * 0.38f, 0.6f)
         val lean = (rnd.nextFloat() - 0.5f) * th * 0.03f
         val trunkW = th * 0.014f
         val tp = Path()
@@ -252,6 +269,7 @@ class PaintKit(val width: Int, val height: Int, val l: Lighting) {
         c: Canvas, x: Float, baseY: Float, th: Float, lit: Int, dark: Int, trunk: Int,
         rnd: Random, detail: Float,
     ) {
+        markTree(c, x, baseY, th, th * 0.5f, 1f)
         val deep = darken(dark, 0.42f)
         val small = th < 140f * unit
         val r = th * 0.4f                      // half the crown width

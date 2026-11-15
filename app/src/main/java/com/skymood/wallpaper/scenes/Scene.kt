@@ -31,6 +31,8 @@ interface Scene {
     fun setSky(state: SkyState) {}
     /** The state of the sky from the weather report: cloud amounts, clarity, darkness, drift. */
     fun setAtmosphere(atmosphere: Atmosphere) {}
+    /** An eclipse to show and how far along it is, 0 first contact .. 0.5 greatest eclipse .. 1 last contact. */
+    fun setEclipse(event: com.skymood.domain.SkyEvent, progress: Float) {}
     /** -1 (first home screen) .. 1 (last home screen). */
     fun setParallax(offset: Float) {}
 }
@@ -44,6 +46,8 @@ abstract class BaseScene : Scene {
     protected var timeOfDay = TimeOfDay.DAY
     protected var skyState = SkyState.DEFAULT
     protected var atmo = Atmosphere.DEFAULT
+    protected var eclipse = com.skymood.domain.SkyEvent.NONE
+    protected var eclipseProgress = 0.5f
     @JvmField protected var parallax = 0f
     protected var sized = false
 
@@ -94,6 +98,11 @@ abstract class BaseScene : Scene {
         if (atmosphere == atmo) return
         atmo = atmosphere
         if (sized) onAtmosphereChanged()
+    }
+
+    override fun setEclipse(event: com.skymood.domain.SkyEvent, progress: Float) {
+        eclipse = event
+        eclipseProgress = progress
     }
 
     /** +1 when clouds, rain and snow travel to the right on screen, -1 to the left. */

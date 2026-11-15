@@ -1,5 +1,8 @@
 package com.skymood.domain
 
+import java.util.Calendar
+import java.util.TimeZone
+
 enum class TimeOfDay(val label: String) {
     DAWN("Morning"),
     DAY("Day"),
@@ -30,6 +33,10 @@ data class SceneSpec(
     val showTemperature: Boolean,
     val fpsCap: Int,
     val dim: Float = 0f,
+    val dayBrightness: Float = 1f,
+    val nightBrightness: Float = 1f,
+    val skyEvent: SkyEvent = SkyEvent.NONE,
+    val eclipseProgress: Float = 0.5f,
     val landscape: LandscapeType = LandscapeType.FOREST,
     val sky: SkyState = SkyState.DEFAULT,
     val wildlife: Boolean = true,
@@ -51,8 +58,31 @@ object SceneSelector {
      * (unit tests, previews) the sun and moon sit at a typical spot for the time of day.
      */
     fun select(weather: WeatherState?, settings: Settings, hour: Int, nowMillis: Long? = null): SceneSpec {
-        val isDay = weather?.isDay ?: TimeOfDay.isDaytimeByClock(hour)
-        val override = settings.previewOverride
+        val effectiveHour = settings.hourOverride ?: hour
+        val baseMillis = nowMillis ?: System.currentTimeMillis()
+        val effectiveMillis = if (settings.hourOverride != null) {
+            val cal = Calendar.getInstance().apply {
+                timeInMillis = baseMillis
+                set(Calendar.HOUR_OF_DAY, effectiveHour)
+                set(Calendar.MINUTE, 0)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+            }
+            cal.timeInMillis
+        } else nowMillis
+
+        val isDay = if (settings.hourOverride != null && effectiveMillis != null) {
+            val loc = weather?.location
+            val lat = loc?.latitude ?: 20.0
+            val lon = loc?.longitude ?: (TimeZone.getDefault().getOffset(effectiveMillis) / 3_600_000.0 * 15.0)
+            Astro.sunPosition(effectiveMillis, lat, lon).elevationDeg > -1.0
+        } else {
+            weather?.isDay ?: TimeOfDay.isDaytimeByClock(effectiveHour)
+        }
+
+        val event = settings.skyEvent
+        // An eclipse needs a clear sky, so it replaces any weather preview.
+        val override = if (event != SkyEvent.NONE) SceneType.CLEAR else settings.previewOverride
         val type = override ?: weather?.scene ?: SceneType.CLEAR
         val atmosphere = atmosphereFor(weather, override)
         val baseIntensity = when {
@@ -63,7 +93,11 @@ object SceneSelector {
             else -> FALLBACK_INTENSITY
         }
         val realWind = (weather?.windSpeedKmh ?: 8.0).toFloat()
-        val timeOfDay = settings.timeOverride ?: TimeOfDay.from(isDay, hour)
+        val timeOfDay = when (event) {
+            SkyEvent.SOLAR_ECLIPSE -> TimeOfDay.DAY
+            SkyEvent.LUNAR_ECLIPSE -> TimeOfDay.NIGHT
+            SkyEvent.NONE -> settings.timeOverride ?: TimeOfDay.from(isDay, effectiveHour)
+        }
         return SceneSpec(
             type = type,
             intensity = (baseIntensity * settings.intensity).coerceIn(0.05f, 1.5f),
@@ -75,8 +109,12 @@ object SceneSelector {
             showTemperature = settings.showTemperature,
             fpsCap = settings.fpsCap.coerceIn(15, 60),
             dim = settings.dim.coerceIn(0f, 0.7f),
+            dayBrightness = settings.dayBrightness.coerceIn(Settings.BRIGHTNESS_MIN, Settings.BRIGHTNESS_MAX),
+            nightBrightness = settings.nightBrightness.coerceIn(Settings.BRIGHTNESS_MIN, Settings.BRIGHTNESS_MAX),
             landscape = settings.landscape,
-            sky = skyFor(weather, settings, timeOfDay, nowMillis),
+            sky = eclipseSky(event) ?: skyFor(weather, settings, timeOfDay, effectiveMillis),
+            skyEvent = event,
+            eclipseProgress = settings.eclipseProgress.coerceIn(0f, 1f),
             wildlife = settings.wildlife,
             atmosphere = atmosphere,
         )
@@ -101,6 +139,13 @@ object SceneSelector {
         TimeOfDay.DAY -> SkyState(0.35f, 0.28f, true, 0.7f, 0.3f, false, phase)
         TimeOfDay.DUSK -> SkyState(0.8f, 0.5f, true, 0.3f, 0.3f, false, phase)
         TimeOfDay.NIGHT -> SkyState(0.35f, 0.7f, false, 0.3f, 0.3f, true, phase)
+    }
+
+    /** The sun, or a full moon, high and in the middle of the sky where an eclipse is easy to see. */
+    private fun eclipseSky(event: SkyEvent): SkyState? = when (event) {
+        SkyEvent.SOLAR_ECLIPSE -> SkyState(0.5f, 0.3f, true, 0.7f, 0.3f, false, 0f)
+        SkyEvent.LUNAR_ECLIPSE -> SkyState(0.35f, 0.7f, false, 0.5f, 0.3f, true, 0.5f)
+        SkyEvent.NONE -> null
     }
 
     private fun skyFor(weather: WeatherState?, settings: Settings, timeOfDay: TimeOfDay, nowMillis: Long?): SkyState {

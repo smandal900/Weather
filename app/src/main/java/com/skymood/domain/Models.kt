@@ -35,12 +35,22 @@ data class WeatherState(
     val intensity: Float get() = WmoMapper.intensityFor(weatherCode, precipitationMm, cloudCover)
 }
 
+/** A special sky to show instead of the real one. */
+@Serializable
+enum class SkyEvent(val label: String) {
+    NONE("None (real sky)"),
+    SOLAR_ECLIPSE("Solar eclipse"),
+    LUNAR_ECLIPSE("Lunar eclipse"),
+}
+
 @Serializable
 data class Settings(
     /** Weather preview override; null means Auto (follow the real weather). */
     val previewOverride: SceneType? = null,
     /** Time-of-day preview override; null means Auto (follow the clock and is_day). */
     val timeOverride: TimeOfDay? = null,
+    /** Hour-of-day override (0..23); null means Auto (follow the real clock). */
+    val hourOverride: Int? = null,
     val landscape: LandscapeType = LandscapeType.FOREST,
     /** Birds, bats, fireflies and animals that fit the weather, time and landscape. */
     val wildlife: Boolean = true,
@@ -55,6 +65,19 @@ data class Settings(
     val showTemperature: Boolean = false,
     /** Darkening layer over the wallpaper so icons and text stay readable, 0..0.7. */
     val dim: Float = 0.35f,
+    /** An eclipse to show: forces a clear sky, by day for a solar eclipse and at night for a lunar one. */
+    val skyEvent: SkyEvent = SkyEvent.NONE,
+    /** How far the eclipse has got: 0 first contact, 0.5 greatest eclipse (totality), 1 last contact. */
+    val eclipseProgress: Float = 0.5f,
+    /** Landscape brightness multiplier for dawn, day and dusk, [BRIGHTNESS_MIN]..[BRIGHTNESS_MAX]. */
+    val dayBrightness: Float = 1f,
+    /** Landscape brightness multiplier at night, [BRIGHTNESS_MIN]..[BRIGHTNESS_MAX]. */
+    val nightBrightness: Float = 1f,
     /** When set, weather is fetched for this city instead of the device location. */
     val manualLocation: SavedLocation? = null,
-)
+) {
+    companion object {
+        const val BRIGHTNESS_MIN = 0.6f
+        const val BRIGHTNESS_MAX = 1.6f
+    }
+}

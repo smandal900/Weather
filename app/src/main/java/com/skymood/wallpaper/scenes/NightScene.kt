@@ -39,12 +39,14 @@ class NightScene : BaseScene() {
     private val meteor = Particle()
     private var nextMeteorMs = 6000f
     private val moon = MoonPainter()
+    private val eclipsePainter = EclipsePainter()
     private var moonRadius = 0f
     private var timeMs = 0f
 
     override fun onResize() {
         moonRadius = min(width, height) * 0.07f
         moon.setup(moonRadius)
+        eclipsePainter.setupLunar(moonRadius)
         moonGlow.shader = RadialGradient(
             0f, 0f, moonRadius * 4f,
             intArrayOf(0x55DDE6FF, 0x11AAB8E0, Color.TRANSPARENT), floatArrayOf(0f, 0.4f, 1f),
@@ -144,7 +146,13 @@ class NightScene : BaseScene() {
         }
 
         if (skyState.moonVisible && moonVis > 0.03f) {
-            moon.draw(canvas, width * skyState.moonX + shift, height * skyState.moonY, skyState.moonPhase, moonVis)
+            val mx = width * skyState.moonX + shift
+            val my = height * skyState.moonY
+            val lunar = eclipse == com.skymood.domain.SkyEvent.LUNAR_ECLIPSE
+            val cov = if (lunar) eclipsePainter.lunarCoverage(eclipseProgress) else 0f
+            // The glow dies away as the moon goes into the shadow.
+            moon.draw(canvas, mx, my, skyState.moonPhase, moonVis, glow = 1f - 0.8f * cov)
+            if (lunar) eclipsePainter.drawLunar(canvas, mx, my, cov, moonVis)
         }
     }
     private companion object {

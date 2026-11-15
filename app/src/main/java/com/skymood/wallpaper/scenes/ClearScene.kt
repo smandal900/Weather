@@ -24,14 +24,20 @@ class ClearScene : BaseScene() {
     private val flarePaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val motes = ParticlePool(MAX_MOTES)
 
+    private val eclipsePainter = EclipsePainter()
     private var sunRadius = 0f
     private var timeMs = 0f
+
+    /** Share of the sun hidden by the moon right now, 0 when there is no solar eclipse. */
+    private fun solarCoverage(): Float =
+        if (eclipse == com.skymood.domain.SkyEvent.SOLAR_ECLIPSE) eclipsePainter.solarCoverage(eclipseProgress) else 0f
 
     /** Clear scene is a daytime scene; if forced at night it shows the day palette. */
     private val dayTime: TimeOfDay get() = if (timeOfDay == TimeOfDay.NIGHT) TimeOfDay.DAY else timeOfDay
 
     override fun onResize() {
         sunRadius = min(width, height) * 0.085f
+        eclipsePainter.setupSolar(sunRadius)
         rebuildShaders()
         motes.clear()
         fillMotes()
@@ -96,13 +102,18 @@ class ClearScene : BaseScene() {
         val cx = sunX() + parallaxPx
         val cy = sunY()
         // How much sun gets through is set by the reported cloud cover and by haze in the air.
-        val strength = (1f - atmo.obscuration) * (0.55f + 0.45f * atmo.clarity)
+        val cov = solarCoverage()
+        val uncovered = Math.pow((1f - cov).toDouble(), 0.6).toFloat()
+        val strength = (1f - atmo.obscuration) * (0.55f + 0.45f * atmo.clarity) * uncovered
         if (strength > 0.03f) {
-            sun.draw(canvas, cx, cy, timeMs, strength.coerceIn(0f, 1f), showCore = atmo.cover < 0.8f, rays = atmo.cover < 0.4f)
+            sun.draw(
+                canvas, cx, cy, timeMs, strength.coerceIn(0f, 1f),
+                showCore = atmo.cover < 0.8f, rays = atmo.cover < 0.4f && cov < 0.4f,
+            )
         }
 
         // Lens flare: soft discs on the line from the sun through the screen centre, only in clear sky.
-        val flareAlpha = ((0.5f - atmo.cover) * 2f).coerceIn(0f, 1f)
+        val flareAlpha = ((0.5f - atmo.cover) * 2f).coerceIn(0f, 1f) * (1f - cov)
         if (flareAlpha > 0.02f) {
             flarePaint.alpha = (255 * flareAlpha).toInt()
             val dx = width * 0.5f - cx
@@ -114,11 +125,14 @@ class ClearScene : BaseScene() {
     }
 
     override fun drawForeground(canvas: Canvas) {
+        // The eclipse darkens the sky and landscape, so it goes over the landscape; the moon disc and corona last.
+        val cov = solarCoverage()
+        eclipsePainter.drawSolar(canvas, sunX() + parallaxPx, sunY(), width, height, cov, timeMs)
         for (i in 0 until motes.activeCount) {
             val p = motes[i]
             val twinkle = 0.6f + 0.4f * sin(timeMs / 600f + p.phase)
-            // Specks of light need sun: fewer under cloud.
-            motePaint.alpha = (255 * p.alpha * twinkle * (1f - atmo.obscuration)).toInt()
+            // Specks of light need sun: fewer under cloud, and none in an eclipse.
+            motePaint.alpha = (255 * p.alpha * twinkle * (1f - atmo.obscuration) * (1f - cov)).toInt()
             canvas.drawCircle(p.x + parallaxPx * 0.5f, p.y, p.size, motePaint)
         }
     }

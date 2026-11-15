@@ -52,7 +52,7 @@ class Lighting {
             TimeOfDay.DAWN -> { tint = 0xFFFF9A7A.toInt(); tintAmount = 0.22f; brightness = 0.86f }
             TimeOfDay.DAY -> { tint = Color.WHITE; tintAmount = 0f; brightness = 1f }
             TimeOfDay.DUSK -> { tint = 0xFFFF7040.toInt(); tintAmount = 0.28f; brightness = 0.72f }
-            TimeOfDay.NIGHT -> { tint = 0xFF1B2850.toInt(); tintAmount = 0.55f; brightness = 0.34f }
+            TimeOfDay.NIGHT -> { tint = 0xFF2A3C6E.toInt(); tintAmount = 0.45f; brightness = 0.56f }
         }
         desaturate = 0f
         snow = false
@@ -65,7 +65,7 @@ class Lighting {
             SceneType.SNOW -> {
                 snow = true; desaturate = 0.15f
                 // Snow reflects moonlight, so a snowy night is brighter than a clear one.
-                brightness = if (timeOfDay == TimeOfDay.NIGHT) 0.5f else brightness * 0.95f
+                brightness = if (timeOfDay == TimeOfDay.NIGHT) 0.68f else brightness * 0.95f
             }
             SceneType.HAZE -> {
                 tint = SkyGradient.blend(tint, 0xFFC9A673.toInt(), 0.6f)
@@ -166,6 +166,9 @@ abstract class Landscape {
 
     /** Where animals can walk or swim in this landscape. */
     open fun groundSlots(): List<com.skymood.wallpaper.fauna.GroundSlot> = emptyList()
+
+    /** Where flowers grow, and where a kingfisher can fish, in this landscape. */
+    open fun meadow(): com.skymood.wallpaper.fauna.MeadowSpec? = null
 
     /** Colour that dims animals to the scene's light. */
     fun wildlifeTint(): Int = lighting.shade(0xFFFFFFFF.toInt())

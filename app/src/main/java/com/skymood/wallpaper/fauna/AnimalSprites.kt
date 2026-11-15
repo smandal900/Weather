@@ -57,7 +57,7 @@ object AnimalSprites {
             Species.HARE -> p.hare(frame)
             Species.CRAB -> p.crab(frame)
             Species.DUCK -> p.duck()
-            Species.DOLPHIN -> p.dolphin()
+            Species.DOLPHIN -> p.dolphin(frame)
         }
         return bmp
     }
@@ -138,23 +138,83 @@ object AnimalSprites {
             c.drawRect(0f, 88f, 140f, 100f, fill)
         }
 
-        fun dolphin() {
+        fun dolphin(frame: Int = 0) {
             val body = 0xFF7F96A8.toInt()
+            val belly = 0xFFD8E2EA.toInt()
+            val finDark = 0xFF66798A.toInt()
+
+            val noseY = when (frame) {
+                1 -> 58f
+                2 -> 52f
+                else -> 46f
+            }
+            val backMidY = when (frame) {
+                1 -> 16f
+                2 -> 22f
+                else -> 24f
+            }
+            val tailY = when (frame) {
+                1 -> 64f
+                2 -> 42f
+                else -> 50f
+            }
+
+            // Dorsal Fin coordinates with base extending DEEP (+12px) inside body
+            val finCoords = when (frame) {
+                1 -> floatArrayOf(122f, 35f, 94f, 4f, 94f, 38f)
+                2 -> floatArrayOf(124f, 37f, 102f, 8f, 98f, 39f)
+                else -> floatArrayOf(126f, 38f, 106f, 8f, 98f, 40f)
+            }
+
+            // 1. Draw Dorsal Fin embedded deep into back
             path.rewind()
-            path.moveTo(4f, 44f)
-            path.quadTo(40f, 8f, 120f, 36f)
-            path.quadTo(150f, 46f, 188f, 40f)
-            path.quadTo(150f, 62f, 112f, 66f)
-            path.quadTo(46f, 84f, 4f, 44f)
+            path.moveTo(finCoords[0], finCoords[1])
+            path.lineTo(finCoords[2], finCoords[3])
+            path.lineTo(finCoords[4], finCoords[5])
             path.close()
             fill.color = body; c.drawPath(path, fill)
-            path.rewind(); path.moveTo(24f, 60f); path.quadTo(70f, 80f, 112f, 62f); path.quadTo(60f, 70f, 24f, 60f)
-            fill.color = 0xFFD8E2EA.toInt(); c.drawPath(path, fill)
-            path.rewind(); path.moveTo(70f, 22f); path.lineTo(86f, -4f); path.lineTo(96f, 26f); path.close()
-            fill.color = 0xFF66798A.toInt(); c.drawPath(path, fill)
-            path.rewind(); path.moveTo(186f, 40f); path.lineTo(200f, 22f); path.lineTo(200f, 56f); path.close()
-            c.drawPath(path, fill)
-            fill.color = 0xFF111820.toInt(); c.drawCircle(46f, 36f, 2f, fill)
+            fill.color = finDark; c.drawPath(path, fill)
+
+            // 2. Draw Main Body Path seamlessly over fin base
+            path.rewind()
+            path.moveTo(190f, noseY)
+            path.quadTo(150f, backMidY, 80f, 42f)
+            path.quadTo(50f, 52f, 22f, tailY)
+            path.lineTo(10f, tailY - 14f)
+            path.lineTo(16f, tailY)
+            path.lineTo(10f, tailY + 14f)
+            path.lineTo(22f, tailY + 6f)
+            path.quadTo(50f, tailY + 10f, 85f, 72f)
+            path.quadTo(150f, noseY + 32f, 190f, noseY)
+            path.close()
+            fill.color = body; c.drawPath(path, fill)
+
+            // 3. Draw Lighter Countershaded Belly
+            path.rewind()
+            path.moveTo(175f, noseY + 6f)
+            path.quadTo(130f, 78f, 85f, 68f)
+            path.quadTo(135f, 66f, 175f, noseY + 6f)
+            path.close()
+            fill.color = belly; c.drawPath(path, fill)
+
+            // 4. Draw Dorsal Fin Front Surface
+            path.rewind()
+            path.moveTo(finCoords[0] - 2f, finCoords[1] - 8f)
+            path.lineTo(finCoords[2], finCoords[3])
+            path.lineTo(finCoords[4] + 4f, finCoords[5] - 6f)
+            path.close()
+            fill.color = finDark; c.drawPath(path, fill)
+
+            // 5. Pectoral Fin on side
+            path.rewind()
+            path.moveTo(142f, noseY + 10f)
+            path.lineTo(122f, noseY + 30f)
+            path.lineTo(128f, noseY + 8f)
+            path.close()
+            fill.color = finDark; c.drawPath(path, fill)
+
+            // 6. Eye
+            fill.color = 0xFF111820.toInt(); c.drawCircle(162f, noseY - 6f, 2.2f, fill)
         }
     }
 }

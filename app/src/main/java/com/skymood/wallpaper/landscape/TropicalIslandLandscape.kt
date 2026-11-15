@@ -7,6 +7,9 @@ import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.Shader
+import com.skymood.wallpaper.fauna.GroundSlot
+import com.skymood.wallpaper.fauna.GroundY
+import com.skymood.wallpaper.fauna.Species
 import kotlin.math.PI
 import kotlin.math.pow
 import kotlin.math.sin
@@ -27,6 +30,18 @@ class TropicalIslandLandscape : PaintedLandscape() {
     private val water = Water(maxGlints = 64)
     private val foamPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val spritePaint = Paint(Paint.FILTER_BITMAP_FLAG)
+
+    private var slots: List<GroundSlot> = emptyList()
+    private var slotsFor = 0
+    override fun groundSlots(): List<GroundSlot> {
+        if (slotsFor != width * 31 + height) {
+            slotsFor = width * 31 + height
+            slots = listOf(GroundSlot(
+                Species.DOLPHIN, 0.12f, 0.88f,
+                GroundY { _ -> height * 0.65f }, 1f, 3))
+        }
+        return slots
+    }
 
     override fun build() {
         val w = width.toFloat(); val h = height.toFloat(); val unit = w / 1080f

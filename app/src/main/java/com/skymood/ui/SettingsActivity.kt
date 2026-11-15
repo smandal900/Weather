@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -64,6 +65,7 @@ import com.skymood.domain.SavedLocation
 import com.skymood.domain.SceneSelector
 import com.skymood.domain.SceneType
 import com.skymood.domain.Settings
+import com.skymood.domain.SkyEvent
 import com.skymood.domain.TimeOfDay
 import com.skymood.domain.WeatherCondition
 import com.skymood.domain.WeatherState
@@ -79,6 +81,7 @@ import kotlinx.coroutines.withContext
 import java.text.DateFormat
 import java.util.Calendar
 import java.util.Date
+import java.util.Locale
 import kotlin.math.roundToInt
 
 class SettingsActivity : ComponentActivity() {
@@ -399,9 +402,103 @@ private fun LocationCard(
 }
 
 @Composable
+private fun TwentyFourHourSliderSection(
+    settings: Settings,
+    onChange: ((Settings) -> Settings) -> Unit,
+) {
+    val currentHour = remember { Calendar.getInstance().get(Calendar.HOUR_OF_DAY) }
+    val activeHour = settings.hourOverride ?: currentHour
+    val isAuto = settings.hourOverride == null
+
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("Preview time of day (24 hours)", style = MaterialTheme.typography.labelLarge)
+            TextButton(
+                onClick = { onChange { it.copy(hourOverride = null, timeOverride = null) } },
+                enabled = !isAuto,
+            ) {
+                Text(if (isAuto) "Auto (clock)" else "Reset to Auto", style = MaterialTheme.typography.labelSmall)
+            }
+        }
+
+        val formattedTime = remember(activeHour) {
+            val h12 = if (activeHour % 12 == 0) 12 else activeHour % 12
+            val ampm = if (activeHour < 12) "AM" else "PM"
+            String.format(Locale.US, "%02d:00 %s (%02d:00)", h12, ampm, activeHour)
+        }
+
+        val timeCategory = when (activeHour) {
+            in 5..7 -> "🌅 Morning / Dawn"
+            in 8..16 -> "☀️ Daytime"
+            in 17..20 -> "🌇 Evening / Dusk"
+            else -> "🌙 Nighttime"
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = formattedTime,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Text(
+                text = timeCategory,
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.Medium,
+            )
+        }
+
+        var sliderValue by remember(activeHour) { mutableFloatStateOf(activeHour.toFloat()) }
+
+        Slider(
+            value = sliderValue,
+            onValueChange = { sliderValue = it },
+            onValueChangeFinished = {
+                val pickedHour = sliderValue.roundToInt().coerceIn(0, 23)
+                onChange { s -> s.copy(hourOverride = pickedHour, timeOverride = null) }
+            },
+            valueRange = 0f..23f,
+            steps = 22,
+            modifier = Modifier.fillMaxWidth(),
+        )
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            listOf(
+                "06:00 Dawn" to 6,
+                "12:00 Noon" to 12,
+                "18:00 Dusk" to 18,
+                "22:00 Night" to 22,
+            ).forEach { (label, h) ->
+                OutlinedButton(
+                    onClick = { onChange { it.copy(hourOverride = h, timeOverride = null) } },
+                ) {
+                    Text(label, style = MaterialTheme.typography.labelSmall)
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun AnimationCard(settings: Settings, onChange: ((Settings) -> Settings) -> Unit) {
     var intensity by remember(settings.intensity) { mutableFloatStateOf(settings.intensity) }
     var dimLevel by remember(settings.dim) { mutableFloatStateOf(settings.dim) }
+    var eclipseLevel by remember(settings.eclipseProgress) { mutableFloatStateOf(settings.eclipseProgress) }
+    var dayLevel by remember(settings.dayBrightness) { mutableFloatStateOf(settings.dayBrightness) }
+    var nightLevel by remember(settings.nightBrightness) { mutableFloatStateOf(settings.nightBrightness) }
     var fpsIndex by remember(settings.fpsCap) {
         mutableIntStateOf(fpsSteps.indexOf(settings.fpsCap).coerceAtLeast(0))
     }
@@ -422,12 +519,35 @@ private fun AnimationCard(settings: Settings, onChange: ((Settings) -> Settings)
                 options = listOf("Auto (real weather)" to null) + SceneType.entries.map { it.label to it },
                 onPick = { type -> onChange { it.copy(previewOverride = type) } },
             )
+            TwentyFourHourSliderSection(settings = settings, onChange = onChange)
+
             Picker(
-                title = "Preview time of day",
-                current = settings.timeOverride?.label ?: "Auto (clock)",
-                options = listOf("Auto (clock)" to null) + TimeOfDay.entries.map { it.label to it },
-                onPick = { time -> onChange { it.copy(timeOverride = time) } },
+                title = "Sky event",
+                current = settings.skyEvent.label,
+                options = SkyEvent.entries.map { it.label to it },
+                onPick = { event -> onChange { it.copy(skyEvent = event) } },
             )
+            if (settings.skyEvent != SkyEvent.NONE) {
+                val phaseLabel = when {
+                    eclipseLevel < 0.2f || eclipseLevel > 0.8f -> "partial"
+                    eclipseLevel in 0.4f..0.6f -> "greatest eclipse"
+                    else -> "nearly total"
+                }
+                Text(
+                    "Eclipse progress: ${(eclipseLevel * 100).roundToInt()}% ($phaseLabel)",
+                    style = MaterialTheme.typography.labelLarge,
+                )
+                Slider(
+                    value = eclipseLevel,
+                    onValueChange = { eclipseLevel = it },
+                    onValueChangeFinished = { onChange { s -> s.copy(eclipseProgress = eclipseLevel) } },
+                    valueRange = 0f..1f,
+                )
+                Text(
+                    "An eclipse replaces the weather: a solar eclipse shows by day and a lunar eclipse at night. Drag to move from first contact to the end.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
 
             Text("Intensity: ${(intensity * 100).roundToInt()}%", style = MaterialTheme.typography.labelLarge)
             Slider(
@@ -437,7 +557,26 @@ private fun AnimationCard(settings: Settings, onChange: ((Settings) -> Settings)
                 valueRange = 0.25f..1.5f,
             )
 
-            Text("Dim for readability: ${(dimLevel * 100).roundToInt()}%", style = MaterialTheme.typography.labelLarge)
+            Text("Daytime brightness: ${(dayLevel * 100).roundToInt()}%", style = MaterialTheme.typography.labelLarge)
+            Slider(
+                value = dayLevel,
+                onValueChange = { dayLevel = it },
+                onValueChangeFinished = { onChange { s -> s.copy(dayBrightness = dayLevel) } },
+                valueRange = Settings.BRIGHTNESS_MIN..Settings.BRIGHTNESS_MAX,
+            )
+            Text("Night brightness: ${(nightLevel * 100).roundToInt()}%", style = MaterialTheme.typography.labelLarge)
+            Slider(
+                value = nightLevel,
+                onValueChange = { nightLevel = it },
+                onValueChangeFinished = { onChange { s -> s.copy(nightBrightness = nightLevel) } },
+                valueRange = Settings.BRIGHTNESS_MIN..Settings.BRIGHTNESS_MAX,
+            )
+            Text(
+                "Overall brightness of the whole wallpaper (sky, landscape and weather) by day (dawn, day, dusk) and at night. 100% is the default.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+
+            Text("Dim for readability:${(dimLevel * 100).roundToInt()}%", style = MaterialTheme.typography.labelLarge)
             Slider(
                 value = dimLevel,
                 onValueChange = { dimLevel = it },
@@ -471,7 +610,7 @@ private fun AnimationCard(settings: Settings, onChange: ((Settings) -> Settings)
             }
 
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Birds and animals", modifier = Modifier.weight(1f))
+                Text("Birds, animals and flowers", modifier = Modifier.weight(1f))
                 Switch(
                     checked = settings.wildlife,
                     onCheckedChange = { on -> onChange { it.copy(wildlife = on) } },

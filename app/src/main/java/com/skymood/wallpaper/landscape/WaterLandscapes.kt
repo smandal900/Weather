@@ -15,7 +15,10 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
 import kotlin.math.sin
+import com.skymood.wallpaper.fauna.FlowerBed
 import com.skymood.wallpaper.fauna.GroundSlot
+import com.skymood.wallpaper.fauna.MeadowSpec
+import com.skymood.wallpaper.fauna.Perch
 import com.skymood.wallpaper.fauna.GroundY
 import com.skymood.wallpaper.fauna.Species
 import kotlin.math.sqrt
@@ -47,14 +50,16 @@ class BeachLandscape : PaintedLandscape() {
     }
 
     private fun makeSlots(w: Float, h: Float): List<GroundSlot> {
-        return listOf(GroundSlot(Species.CRAB, 0.08f, 0.7f, GroundY { x -> shoreEdge(x, w, h) + h * 0.07f }, 1.2f, 3))
+        return listOf(
+            GroundSlot(Species.CRAB, 0.08f, 0.7f, GroundY { x -> shoreEdge(x, w, h) + h * 0.07f }, 1.2f, 3),
+            GroundSlot(Species.DOLPHIN, 0.08f, 0.58f, GroundY { _ -> h * 0.77f }, 1f, 3),
+        )
     }
 
     private val water = Water()
     private val foamLines = FloatArray(FOAM_SEGMENTS * 4)
     private val foamPaint = stroke()
     private val spritePaint = Paint(Paint.FILTER_BITMAP_FLAG)
-
     override fun build() {
         val w = width.toFloat(); val h = height.toFloat(); val unit = w / 1080f
         water.build(-w * 0.1f, w * 1.1f, h * 0.66f, h * 0.86f, unit)
@@ -550,7 +555,7 @@ class BeachLandscape : PaintedLandscape() {
                 val r = roughness(windKmh)
                 val boatCycle = (t * 0.045f) % 1.4f - 0.2f
                 val boatX = w * boatCycle
-                val boatY = h * 0.735f + sin(t * 2.2f) * h * 0.0035f * r
+                val boatY = h * 0.725f + sin(t * 2.2f) * h * 0.0035f * r
                 val pitch = sin(t * 1.8f) * 2.2f * r
 
                 canvas.save()
@@ -632,7 +637,7 @@ class SeaLandscape(private val withBoat: Boolean) : PaintedLandscape() {
     }
 
     private fun makeSlots(w: Float, h: Float): List<GroundSlot> {
-        return listOf(GroundSlot(Species.DOLPHIN, 0.15f, 0.85f, GroundY { _ -> h * 0.7f }, 1f, 1))
+        return listOf(GroundSlot(Species.DOLPHIN, 0.10f, 0.90f, GroundY { _ -> h * 0.82f }, 1f, 3))
     }
 
     private val water = Water(maxGlints = 64)
@@ -775,7 +780,7 @@ class SeaLandscape(private val withBoat: Boolean) : PaintedLandscape() {
         val boat = sprites["boat"]
         if (withBoat && boat != null) {
             val s = w / 1080f * 1.15f
-            val by = h * 0.78f + sin(t * 1.3f) * h * 0.004f * rough
+            val by = h * 0.72f + sin(t * 1.3f) * h * 0.004f * rough
             canvas.save()
             canvas.translate(boatX + shift(0.7f), by)
             canvas.rotate(sin(t * 1.1f) * 2.5f * rough)
@@ -800,6 +805,21 @@ class SeaLandscape(private val withBoat: Boolean) : PaintedLandscape() {
 
 /** A still lake mirroring a mountain and forest shore, with reeds and rocks on the near bank. */
 class LakeLandscape : PaintedLandscape() {
+    private var meadowSpec: MeadowSpec? = null
+    private var meadowFor = 0
+    override fun meadow(): MeadowSpec {
+        if (meadowSpec == null || meadowFor != width * 31 + height) {
+            meadowFor = width * 31 + height
+            val w = width.toFloat(); val h = height.toFloat()
+            val r = Ridge(width, h * 0.89f, h * 0.02f, false, 33)
+            meadowSpec = MeadowSpec(
+                listOf(FlowerBed(0.02f, 0.98f, GroundY { x -> r.yAt(x) + h * 0.01f }, h * 0.07f, 14)),
+                // A snag out in the water, fished from the far bank side of the ducks.
+                Perch(w * 0.82f, h * 0.835f, h * 0.045f, h * 0.8f, 1.2f),
+            )
+        }
+        return meadowSpec!!
+    }
     override val layers = arrayOf(PaintLayer(0.42f, 0.66f, 0.05f), PaintLayer(0.82f, 1f, 1f))
 
     private var slots: List<GroundSlot> = emptyList()
@@ -914,6 +934,16 @@ class LakeLandscape : PaintedLandscape() {
 
 /** A river winding out of the mountains through a green valley, between wooded slopes. */
 class RiverValleyLandscape : PaintedLandscape() {
+    private var meadowSpec: MeadowSpec? = null
+    private var meadowFor = 0
+    override fun meadow(): MeadowSpec {
+        if (meadowSpec == null || meadowFor != width * 31 + height) {
+            meadowFor = width * 31 + height
+            val w = width.toFloat(); val h = height.toFloat()
+            meadowSpec = MeadowSpec(emptyList(), Perch(w * 0.36f, h * 0.945f, h * 0.05f, h * 0.935f, 1.6f))
+        }
+        return meadowSpec!!
+    }
     override val layers = arrayOf(PaintLayer(0.42f, 1f, 0.1f), PaintLayer(0.62f, 1f, 1f))
 
     private var slots: List<GroundSlot> = emptyList()

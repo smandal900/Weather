@@ -5,6 +5,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.LinearGradient
 import android.graphics.Paint
+import android.graphics.PorterDuff
 import android.graphics.Shader
 import android.graphics.Typeface
 import com.skymood.domain.LandscapeType
@@ -70,6 +71,10 @@ class SceneDirector(
     private val scrimPaint = Paint()
     private var dim = 0f
 
+    /** The user's overall brightness for the current time of day: below 1 darkens, above 1 lifts the darks. */
+    private var brightness = 1f
+    private var cool = false
+
     /** [fade] false switches instantly, used while the screen is off so nothing changes after unlock. */
     fun apply(spec: SceneSpec, fade: Boolean = true) {
         val newKey = (spec.type.ordinal * 8 + spec.timeOfDay.ordinal) * 16 + spec.landscape.ordinal
@@ -81,6 +86,7 @@ class SceneDirector(
         scene.setEnvironment(spec.windKmh, spec.cloudCover, spec.timeOfDay)
         scene.setSky(spec.sky)
         scene.setAtmosphere(spec.atmosphere)
+        scene.setEclipse(spec.skyEvent, spec.eclipseProgress)
         current = scene
         currentType = spec.type
 
@@ -89,8 +95,10 @@ class SceneDirector(
         val lightX = if (spec.timeOfDay == com.skymood.domain.TimeOfDay.NIGHT) spec.sky.moonX else spec.sky.sunX
         land.setConditions(spec.timeOfDay, spec.type, spec.windKmh, lightX, spec.atmosphere.clarityBucket)
         landscape = land
-        wildlife.configure(spec, land.groundSlots(), land.wildlifeTint())
+        wildlife.configure(spec, land.groundSlots(), land.wildlifeTint(), land.meadow())
 
+        cool = spec.timeOfDay == com.skymood.domain.TimeOfDay.NIGHT
+        brightness = if (cool) spec.nightBrightness else spec.dayBrightness
         dim = spec.dim
         scrimPaint.alpha = (255 * dim).toInt()
         tempText = if (spec.showTemperature && spec.temperatureC != null) {
@@ -182,12 +190,22 @@ class SceneDirector(
             snapshotPaint.alpha = (255 * (fadeMs / FADE_MS)).toInt().coerceIn(0, 255)
             canvas.drawBitmap(snap, 0f, 0f, snapshotPaint)
         }
+        if (brightness < 0.99f) {
+            canvas.drawColor(Color.argb(((1f - brightness) * 255).toInt().coerceIn(0, 255), 0, 0, 0))
+        } else if (brightness > 1.01f) {
+            val g = ((brightness - 1f) * LIFT * 255).toInt().coerceIn(0, 255)
+            // A cool blue lift at night keeps it looking like night instead of washed-out grey.
+            val lift = if (cool) Color.rgb(g * 7 / 10, g * 85 / 100, (g * 12 / 10).coerceAtMost(255)) else Color.rgb(g, g, g)
+            canvas.drawColor(lift, PorterDuff.Mode.SCREEN)
+        }
         if (dim > 0f) canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), scrimPaint)
         tempText?.let { canvas.drawText(it, width * 0.94f, height * 0.11f, tempPaint) }
     }
 
     companion object {
         const val FADE_MS = 2000f
+        /** How much grey the screen blend adds per unit of brightness above 100%. */
+        private const val LIFT = 0.33f
 
         fun createScene(type: SceneType): Scene = when (type) {
             SceneType.CLEAR, SceneType.PARTLY_CLOUDY -> ClearSkyScene()

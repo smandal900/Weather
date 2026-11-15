@@ -54,6 +54,12 @@ class ClearSkyScene : BaseScene() {
         clouds.setAtmosphere(atmosphere)
     }
 
+    override fun setEclipse(event: com.skymood.domain.SkyEvent, progress: Float) {
+        super.setEclipse(event, progress)
+        day.setEclipse(event, progress)
+        night.setEclipse(event, progress)
+    }
+
     override fun setParallax(offset: Float) {
         super.setParallax(offset)
         day.setParallax(offset)
