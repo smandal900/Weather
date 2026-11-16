@@ -164,6 +164,9 @@ abstract class Landscape {
     /** Called when the sun moved without changing the light's side, so no repaint is needed. */
     protected open fun onSunMoved() {}
 
+    /** Called each time this landscape replaces another on screen, so it can vary what is happening in it. */
+    open fun onShown() {}
+
     /** Where animals can walk or swim in this landscape. */
     open fun groundSlots(): List<com.skymood.wallpaper.fauna.GroundSlot> = emptyList()
 
