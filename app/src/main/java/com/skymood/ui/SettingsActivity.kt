@@ -569,7 +569,7 @@ private fun AnimationCard(settings: Settings, onChange: ((Settings) -> Settings)
                 value = nightLevel,
                 onValueChange = { nightLevel = it },
                 onValueChangeFinished = { onChange { s -> s.copy(nightBrightness = nightLevel) } },
-                valueRange = Settings.BRIGHTNESS_MIN..Settings.BRIGHTNESS_MAX,
+                valueRange = Settings.NIGHT_BRIGHTNESS_MIN..Settings.BRIGHTNESS_MAX,
             )
             Text(
                 "Overall brightness of the whole wallpaper (sky, landscape and weather) by day (dawn, day, dusk) and at night. 100% is the default.",

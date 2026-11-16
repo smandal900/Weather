@@ -110,7 +110,7 @@ object SceneSelector {
             fpsCap = settings.fpsCap.coerceIn(15, 60),
             dim = settings.dim.coerceIn(0f, 0.7f),
             dayBrightness = settings.dayBrightness.coerceIn(Settings.BRIGHTNESS_MIN, Settings.BRIGHTNESS_MAX),
-            nightBrightness = settings.nightBrightness.coerceIn(Settings.BRIGHTNESS_MIN, Settings.BRIGHTNESS_MAX),
+            nightBrightness = settings.nightBrightness.coerceIn(Settings.NIGHT_BRIGHTNESS_MIN, Settings.BRIGHTNESS_MAX),
             landscape = settings.landscape,
             sky = eclipseSky(event) ?: skyFor(weather, settings, timeOfDay, effectiveMillis),
             skyEvent = event,

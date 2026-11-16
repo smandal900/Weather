@@ -71,13 +71,15 @@ data class Settings(
     val eclipseProgress: Float = 0.5f,
     /** Landscape brightness multiplier for dawn, day and dusk, [BRIGHTNESS_MIN]..[BRIGHTNESS_MAX]. */
     val dayBrightness: Float = 1f,
-    /** Landscape brightness multiplier at night, [BRIGHTNESS_MIN]..[BRIGHTNESS_MAX]. */
+    /** Landscape brightness multiplier at night, [NIGHT_BRIGHTNESS_MIN]..[BRIGHTNESS_MAX]. */
     val nightBrightness: Float = 1f,
     /** When set, weather is fetched for this city instead of the device location. */
     val manualLocation: SavedLocation? = null,
 ) {
     companion object {
         const val BRIGHTNESS_MIN = 0.6f
+        /** Night can go darker than day, down to 40%. */
+        const val NIGHT_BRIGHTNESS_MIN = 0.4f
         const val BRIGHTNESS_MAX = 1.6f
     }
 }
