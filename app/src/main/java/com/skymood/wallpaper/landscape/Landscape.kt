@@ -25,6 +25,8 @@ class Lighting {
     private var tintAmount = 0f
     private var desaturate = 0f
     private var brightness = 1f
+    /** Stretches tones away from [CONTRAST_PIVOT]; above 1 it lifts mid tones and sinks shadows (highlights roll off, see [stretch]). */
+    private var contrast = 1f
 
     var snow = false
         private set
@@ -52,24 +54,33 @@ class Lighting {
             TimeOfDay.DAWN -> { tint = 0xFFFF9A7A.toInt(); tintAmount = 0.22f; brightness = 0.86f }
             TimeOfDay.DAY -> { tint = Color.WHITE; tintAmount = 0f; brightness = 1f }
             TimeOfDay.DUSK -> { tint = 0xFFFF7040.toInt(); tintAmount = 0.28f; brightness = 0.72f }
-            TimeOfDay.NIGHT -> { tint = 0xFF2A3C6E.toInt(); tintAmount = 0.45f; brightness = 0.56f }
+            // Night is already dark, so it gets a lighter blue wash and a contrast stretch (see below)
+            // to keep the depth layers and ridge lines apart, rather than one flat dark band.
+            TimeOfDay.NIGHT -> { tint = 0xFF2A3C6E.toInt(); tintAmount = 0.38f; brightness = 0.66f }
         }
+        val night = timeOfDay == TimeOfDay.NIGHT
+        contrast = if (night) NIGHT_CONTRAST else 1f
+        // Weather dims the landscape less at night, as there is little light left to take away.
+        fun dim(factor: Float) = if (night) 1f - (1f - factor) * 0.5f else factor
         desaturate = 0f
         snow = false
         when (weather) {
             SceneType.PARTLY_CLOUDY -> brightness *= 0.96f
-            SceneType.OVERCAST, SceneType.DRIZZLE -> { desaturate = 0.22f; brightness *= 0.82f }
-            SceneType.HEAVY_RAIN -> { desaturate = 0.3f; brightness *= 0.7f }
-            SceneType.STORM -> { desaturate = 0.35f; brightness *= 0.58f }
-            SceneType.FOG -> { desaturate = 0.3f; brightness *= 0.9f }
+            SceneType.OVERCAST, SceneType.DRIZZLE -> { desaturate = 0.22f; brightness *= dim(0.82f) }
+            SceneType.HEAVY_RAIN -> { desaturate = 0.3f; brightness *= dim(0.7f) }
+            SceneType.STORM -> { desaturate = 0.35f; brightness *= dim(0.58f) }
+            SceneType.FOG -> { desaturate = 0.3f; brightness *= dim(0.9f) }
             SceneType.SNOW -> {
                 snow = true; desaturate = 0.15f
-                // Snow reflects moonlight, so a snowy night is brighter than a clear one.
-                brightness = if (timeOfDay == TimeOfDay.NIGHT) 0.68f else brightness * 0.95f
+                // Snow reflects moonlight, so a snowy night is brighter than a clear one. It is already
+                // bright enough, so it skips the contrast stretch.
+                brightness = if (night) 0.68f else brightness * 0.95f
+                if (night) contrast = 1f
             }
             SceneType.HAZE -> {
-                tint = SkyGradient.blend(tint, 0xFFC9A673.toInt(), 0.6f)
-                tintAmount = max(tintAmount, 0.25f); brightness *= 0.9f
+                // The dust tint is a bright tan; only a little of it at night, or the land outshines the sky.
+                tint = SkyGradient.blend(tint, 0xFFC9A673.toInt(), if (night) 0.25f else 0.6f)
+                tintAmount = max(tintAmount, 0.25f); brightness *= dim(0.9f)
             }
             else -> Unit
         }
@@ -99,10 +110,22 @@ class Lighting {
         if (tintAmount > 0f) c = SkyGradient.blend(c, tint, tintAmount)
         return Color.argb(
             Color.alpha(c),
-            (Color.red(c) * brightness).toInt().coerceIn(0, 255),
-            (Color.green(c) * brightness).toInt().coerceIn(0, 255),
-            (Color.blue(c) * brightness).toInt().coerceIn(0, 255),
+            stretch(Color.red(c) * brightness),
+            stretch(Color.green(c) * brightness),
+            stretch(Color.blue(c) * brightness),
         )
+    }
+
+    /**
+     * Stretches a channel away from [CONTRAST_PIVOT], then rolls off anything above [HIGHLIGHT_KNEE]
+     * so light surfaces (ice, snow, white walls) are not amplified into a glare; only the mid tones
+     * and shadows that separate the depth layers get the extra contrast.
+     */
+    private fun stretch(v: Float): Int {
+        if (contrast == 1f) return v.toInt().coerceIn(0, 255)
+        val s = CONTRAST_PIVOT + (v - CONTRAST_PIVOT) * contrast
+        return (if (s > HIGHLIGHT_KNEE) HIGHLIGHT_KNEE + (s - HIGHLIGHT_KNEE) * HIGHLIGHT_ROLLOFF else s)
+            .toInt().coerceIn(0, 255)
     }
 
     /** Open ground, rooftops and peaks: covered white when it snows. */
@@ -113,6 +136,10 @@ class Lighting {
 
     companion object {
         const val SNOW = 0xFFF2F6FA.toInt()
+        private const val NIGHT_CONTRAST = 1.35f
+        private const val CONTRAST_PIVOT = 30f
+        private const val HIGHLIGHT_KNEE = 72f
+        private const val HIGHLIGHT_ROLLOFF = 0.4f
     }
 }
 
@@ -163,6 +190,9 @@ abstract class Landscape {
 
     /** Called when the sun moved without changing the light's side, so no repaint is needed. */
     protected open fun onSunMoved() {}
+
+    /** Called each time this landscape replaces another on screen, so it can vary what is happening in it. */
+    open fun onShown() {}
 
     /** Where animals can walk or swim in this landscape. */
     open fun groundSlots(): List<com.skymood.wallpaper.fauna.GroundSlot> = emptyList()

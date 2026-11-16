@@ -72,23 +72,26 @@ class SkyGradient {
             SceneType.STORM -> 0.95f
         }
 
-        /** Storms darken the sky; haze gives it a dusty yellow-brown cast. */
-        private fun storm(scene: SceneType, c: Int) = when (scene) {
+        /**
+         * Storms darken the sky; haze gives it a dusty yellow-brown cast. The dust is a bright tan,
+         * so at night only a trace of it is mixed in, or it would lift the sky to dusk brightness.
+         */
+        private fun storm(scene: SceneType, t: TimeOfDay, c: Int) = when (scene) {
             SceneType.STORM -> blend(c, Color.BLACK, 0.35f)
-            SceneType.HAZE -> blend(c, 0xFFC9A673.toInt(), 0.4f)
+            SceneType.HAZE -> blend(c, 0xFFC9A673.toInt(), if (t == TimeOfDay.NIGHT) 0.12f else 0.4f)
             else -> c
         }
 
         fun topColor(scene: SceneType, t: TimeOfDay) =
-            storm(scene, blend(clearTop.getValue(t), overcastTop.getValue(t), overcast(scene)))
+            storm(scene, t, blend(clearTop.getValue(t), overcastTop.getValue(t), overcast(scene)))
 
         fun midColor(scene: SceneType, t: TimeOfDay) = storm(
-            scene,
+            scene, t,
             blend(clearMid.getValue(t), blend(overcastTop.getValue(t), overcastBottom.getValue(t), 0.5f), overcast(scene)),
         )
 
         fun bottomColor(scene: SceneType, t: TimeOfDay) =
-            storm(scene, blend(clearBottom.getValue(t), overcastBottom.getValue(t), overcast(scene)))
+            storm(scene, t, blend(clearBottom.getValue(t), overcastBottom.getValue(t), overcast(scene)))
 
         fun blend(a: Int, b: Int, t: Float): Int {
             val u = 1f - t

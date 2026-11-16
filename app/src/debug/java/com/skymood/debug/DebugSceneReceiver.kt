@@ -27,6 +27,8 @@ class DebugSceneReceiver : BroadcastReceiver() {
         val phase = intent.getStringExtra("phase")
         val wildlife = intent.getStringExtra("wildlife")
         val shuffle = intent.getStringExtra("shuffle")
+        // Tiles every sprite frame of one species ("DEER", "HORSE:1", "BIRD", "INSECT") over the scene; "off" clears it.
+        intent.getStringExtra("sheet")?.let { com.skymood.wallpaper.fauna.FaunaDebug.sheet = if (it == "off") null else it }
         val dayBrightness = intent.getStringExtra("day_brightness")?.toFloatOrNull()
         val nightBrightness = intent.getStringExtra("night_brightness")?.toFloatOrNull()
         val event = intent.getStringExtra("event")

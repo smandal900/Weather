@@ -43,7 +43,8 @@ internal object BirdSprites {
         Look(22f, 6.5f, 34f, 9f, 9f, 0xFFF3F3F0.toInt(), 0xFF30343C.toInt(), 4),
         Look(26f, 8.5f, 38f, 17f, 15f, 0xFF4B3A2C.toInt(), 0xFF2A1F17.toInt(), 5),
         Look(30f, 9f, 30f, 11f, 8f, 0xFF4E4E56.toInt(), 0xFF26262C.toInt(), 4, longNeck = true),
-        Look(8f, 6f, 28f, 14f, 3f, 0xFF14141A.toInt(), 0xFF0C0C10.toInt(), 3, bat = true),
+        // A slate blue, not near-black: the night tint multiplies it down, and it flies against a sky that is almost black.
+        Look(8f, 6f, 28f, 14f, 3f, 0xFF3C4260.toInt(), 0xFF2C3148.toInt(), 3, bat = true),
     )
 
     fun bake(kind: Int, frame: Int): Bitmap? {

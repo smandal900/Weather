@@ -7,11 +7,10 @@ import android.content.IntentFilter
 import android.app.WallpaperColors
 import android.graphics.Color
 import android.os.Build
-import android.os.Handler
-import android.os.Looper
 import android.os.PowerManager
 import android.os.SystemClock
 import android.service.wallpaper.WallpaperService
+import android.view.Choreographer
 import android.view.SurfaceHolder
 import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
@@ -45,7 +44,7 @@ class SkyWallpaperService : WallpaperService() {
      */
     inner class SkyEngine : Engine() {
 
-        private val handler = Handler(Looper.getMainLooper())
+        private val choreographer = Choreographer.getInstance()
         private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
         private val director = SceneDirector()
         private val renderer: FrameRenderer = CanvasFrameRenderer(director)
@@ -67,8 +66,20 @@ class SkyWallpaperService : WallpaperService() {
         private var weather: WeatherState? = null
         private var settings = Settings()
 
-        private val frame = object : Runnable {
-            override fun run() = drawFrame()
+        /**
+         * Frames are paced by the display's vsync instead of a handler timer. A timer fires a few
+         * milliseconds early or late, so some frames stay on screen for one display refresh and
+         * some for two, which shows up as judder on anything that moves steadily, like a train.
+         * Here a frame is only drawn on the vsync that best matches the frame-rate cap, so the
+         * time between frames is always a whole number of refreshes and motion stays even.
+         */
+        private val frame = object : Choreographer.FrameCallback {
+            override fun doFrame(frameTimeNanos: Long) {
+                if (!running) return
+                val now = frameTimeNanos / 1_000_000L
+                if (now - lastFrameMs >= frameIntervalMs() - VSYNC_SLACK_MS) drawFrame(now)
+                if (running) choreographer.postFrameCallback(this)
+            }
         }
 
         /** On lock: choose the next landscape now, so it is fully painted before the phone is unlocked. */
@@ -167,7 +178,7 @@ class SkyWallpaperService : WallpaperService() {
 
         override fun onDestroy() {
             running = false
-            handler.removeCallbacks(frame)
+            choreographer.removeFrameCallback(frame)
             scope.cancel()
             runCatching { unregisterReceiver(powerReceiver) }
             runCatching { unregisterReceiver(screenReceiver) }
@@ -179,10 +190,10 @@ class SkyWallpaperService : WallpaperService() {
             val shouldRun = visible && surfaceReady
             if (shouldRun == running) return
             running = shouldRun
-            handler.removeCallbacks(frame)
+            choreographer.removeFrameCallback(frame)
             if (running) {
                 lastFrameMs = SystemClock.uptimeMillis()
-                handler.post(frame)
+                choreographer.postFrameCallback(frame)
             }
         }
 
@@ -191,19 +202,20 @@ class SkyWallpaperService : WallpaperService() {
             return 1000L / fps
         }
 
-        private fun drawFrame() {
+        /** [start] is the vsync time in milliseconds, so every step of the animation is a whole number of refreshes. */
+        private fun drawFrame(start: Long) {
             if (!running) return
-            val start = SystemClock.uptimeMillis()
             val dt = (start - lastFrameMs).coerceIn(0L, 100L)
             lastFrameMs = start
             // The sun and moon creep across the sky; refresh their positions about once a minute.
             if (start - lastSkyMs > 60_000L) { lastSkyMs = start; applySpec() }
             director.update(dt)
             renderer.render(surfaceHolder)
-            if (running) {
-                val spent = SystemClock.uptimeMillis() - start
-                handler.postDelayed(frame, (frameIntervalMs() - spent).coerceAtLeast(1L))
-            }
         }
+    }
+
+    private companion object {
+        /** A frame may be drawn this much before its due time, so it lands on the nearest vsync. */
+        const val VSYNC_SLACK_MS = 4L
     }
 }

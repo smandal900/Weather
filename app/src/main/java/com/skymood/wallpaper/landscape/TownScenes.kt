@@ -5,18 +5,29 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.LinearGradient
 import android.graphics.Paint
-import android.graphics.Path
 import android.graphics.RadialGradient
-import android.graphics.RectF
 import android.graphics.Shader
 import kotlin.math.PI
-import kotlin.math.abs
 import kotlin.math.sin
 import kotlin.random.Random
 
 /** A city skyline over a river: lit windows after dark, blinking red beacons on the tallest towers. */
 class CitySkylineLandscape : PaintedLandscape() {
     override val layers = arrayOf(PaintLayer(0.34f, 0.68f, 0.08f), PaintLayer(0.26f, 0.72f, 0.5f))
+
+    private var slots: List<com.skymood.wallpaper.fauna.GroundSlot> = emptyList()
+    private var slotsFor = 0
+    override fun groundSlots(): List<com.skymood.wallpaper.fauna.GroundSlot> {
+        if (slotsFor != width * 31 + height) {
+            slotsFor = width * 31 + height
+            val h = height.toFloat()
+            // Pigeons strut along the river embankment.
+            slots = listOf(
+                com.skymood.wallpaper.fauna.GroundSlot(com.skymood.wallpaper.fauna.Species.GULL, 0.06f, 0.94f, com.skymood.wallpaper.fauna.GroundY { _ -> h * 0.678f }, 1.5f, 4),
+            )
+        }
+        return slots
+    }
     private val water = Water(maxGlints = 60)
     private val beacon = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFF3B30.toInt() }
     private val glow = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -121,293 +132,6 @@ class CitySkylineLandscape : PaintedLandscape() {
             canvas.save(); canvas.translate(x, y); canvas.scale(w * 0.012f, w * 0.012f); canvas.drawCircle(0f, 0f, 1f, glow); canvas.restore()
             beacon.alpha = (120 + 135 * blink).toInt()
             canvas.drawCircle(x, y, w * 0.0035f, beacon)
-        }
-        canvas.restore()
-    }
-}
-
-/** A hilltop temple with a curved shikhara tower, a long stairway, flags, and diyas that glow after dark. */
-class TempleHilltopLandscape : PaintedLandscape() {
-    override val layers = arrayOf(PaintLayer(0.34f, 0.70f, 0.08f), PaintLayer(0.26f, 0.84f, 0.5f), PaintLayer(0.78f, 1f, 1f))
-    private val flag = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFF8A1E.toInt() }
-    private val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val flagPath = Path()
-
-    private val tx get() = width * 0.62f
-    private val plat get() = height * 0.56f
-    private val towerH get() = height * 0.16f
-
-    override fun build() {
-        glowPaint.shader = RadialGradient(0f, 0f, 1f, intArrayOf(0xCCFFC060.toInt(), 0x44FF9A30, Color.TRANSPARENT), floatArrayOf(0f, 0.4f, 1f), Shader.TileMode.CLAMP)
-    }
-
-    override fun onLightingChanged() { flag.color = lighting.shade(0xFFFF8A1E.toInt()) }
-
-    override fun paintAll(k: PaintKit) = PaintResult(arrayOf(far(k), temple(k), fore(k)))
-
-    private fun far(k: PaintKit): Bitmap? {
-        val (c, bmp) = k.newLayer(layers[0]) ?: return null
-        val l = k.l; val h = k.h
-        val rnd = Random(181)
-        k.mountain(c, Ridge(k.width, h * 0.56f, h * 0.1f, false, 19), h * 0.7f,
-            l.distant(l.ground(0xFF7C9A8A.toInt()), 0.5f), l.distant(l.ground(0xFF4E6A5C.toInt()), 0.5f), rnd)
-        k.haze(c, h * 0.52f, h * 0.7f, 0.5f)
-        return bmp
-    }
-
-    private fun shikhara(k: PaintKit, c: Canvas, x: Float, base: Float, bw: Float, tw: Float, hgt: Float, stone: Int) {
-        val l = k.l
-        val outline = Path()
-        outline.moveTo(x - bw, base)
-        outline.cubicTo(x - bw * 1.12f, base - hgt * 0.4f, x - tw * 2.0f, base - hgt * 0.72f, x - tw, base - hgt)
-        outline.lineTo(x + tw, base - hgt)
-        outline.cubicTo(x + tw * 2.0f, base - hgt * 0.72f, x + bw * 1.12f, base - hgt * 0.4f, x + bw, base)
-        outline.close()
-        val a = k.lighten(stone, 0.15f); val b = k.darken(stone, 0.35f)
-        k.shader = LinearGradient(x - bw, 0f, x + bw, 0f, if (k.sunOnLeft) a else b, if (k.sunOnLeft) b else a, Shader.TileMode.CLAMP)
-        c.drawPath(outline, k.fill)
-        k.shader = null
-        // Horizontal ribs follow the tapering silhouette.
-        k.line.strokeWidth = max1(1f, 1.4f * k.unit); k.line.color = k.alpha(Color.BLACK, 55)
-        var t = 0.06f
-        while (t < 0.96f) {
-            val half = (bw + (tw - bw) * Math.pow(t.toDouble(), 0.8).toFloat()) * (1f + 0.12f * sin(PI.toFloat() * t))
-            c.drawLine(x - half, base - hgt * t, x + half, base - hgt * t, k.line)
-            t += 0.07f
-        }
-        // Crown: amalaka disc, kalash and finial in gold.
-        val gold = l.shade(0xFFE0B040.toInt())
-        k.fill.color = k.darken(stone, 0.1f)
-        c.drawOval(x - tw * 1.7f, base - hgt - hgt * 0.035f, x + tw * 1.7f, base - hgt + hgt * 0.02f, k.fill)
-        k.fill.color = gold
-        c.drawCircle(x, base - hgt - hgt * 0.07f, tw * 0.9f, k.fill)
-        k.line.strokeWidth = max1(1.5f, 2f * k.unit); k.line.color = gold
-        c.drawLine(x, base - hgt - hgt * 0.1f, x, base - hgt - hgt * 0.2f, k.line)
-    }
-
-    private fun max1(a: Float, b: Float) = if (a > b) a else b
-
-    private fun temple(k: PaintKit): Bitmap? {
-        val (c, bmp) = k.newLayer(layers[1]) ?: return null
-        val l = k.l; val h = k.h; val w = k.w
-        val rnd = Random(182)
-        // The hill.
-        k.shader = LinearGradient(0f, h * 0.54f, 0f, h * 0.76f, l.ground(0xFF5E9A4A.toInt()), l.ground(0xFF2E6232.toInt()), Shader.TileMode.CLAMP)
-        c.drawPath(moundPath(w * 0.08f, w * 1.16f, h * 0.76f, h * 0.22f), k.fill)
-        k.shader = null
-        val lit = l.foliage(0xFF4E9A3E.toInt()); val dark = l.foliage(0xFF1E4A24.toInt())
-        for (i in 0 until 14) {
-            val x = w * (0.14f + 0.9f * rnd.nextFloat())
-            if (abs(x - tx) < w * 0.09f) continue
-            val u = ((x - w * 0.08f) / (w * 1.08f)).coerceIn(0f, 1f)
-            val topY = h * 0.76f - h * 0.22f * Math.pow(sin(PI.toFloat() * u).coerceAtLeast(0f).toDouble(), 1.3).toFloat()
-            k.broadleaf(c, x, topY + h * 0.03f + h * 0.05f * rnd.nextFloat(), h * (0.05f + 0.03f * rnd.nextFloat()), k.jitter(lit, rnd, 0.2f), dark, dark, rnd, 0.3f)
-        }
-        // Stairway up the front.
-        val stone = l.ground(0xFFD9C9A8.toInt())
-        val stairs = Path()
-        stairs.moveTo(tx - w * 0.022f, plat); stairs.lineTo(tx + w * 0.022f, plat)
-        stairs.lineTo(tx + w * 0.06f, h * 0.755f); stairs.lineTo(tx - w * 0.06f, h * 0.755f); stairs.close()
-        c.drawPath(stairs, k.apply { fill.color = stone }.fill)
-        k.line.strokeWidth = 1.4f * k.unit; k.line.color = k.alpha(Color.BLACK, 60)
-        var sy = plat + h * 0.01f
-        while (sy < h * 0.75f) {
-            val f = (sy - plat) / (h * 0.755f - plat)
-            val half = w * (0.022f + 0.038f * f)
-            c.drawLine(tx - half, sy, tx + half, sy, k.line)
-            sy += h * 0.0125f
-        }
-        // Plinth, sanctum, door.
-        val sand = l.ground(0xFFE2C79A.toInt())
-        k.fill.color = k.darken(sand, 0.2f)
-        c.drawRect(tx - w * 0.17f, plat - h * 0.012f, tx + w * 0.17f, plat + h * 0.004f, k.fill)
-        k.fill.color = sand
-        c.drawRect(tx - w * 0.075f, plat - h * 0.04f, tx + w * 0.075f, plat - h * 0.012f, k.fill)
-        k.fill.color = if (l.windowsLit) 0xFFFFC060.toInt() else l.shade(0xFF3A2A1E.toInt())
-        val door = Path(); door.moveTo(tx - w * 0.016f, plat - h * 0.012f); door.lineTo(tx - w * 0.016f, plat - h * 0.026f)
-        door.quadTo(tx, plat - h * 0.038f, tx + w * 0.016f, plat - h * 0.026f); door.lineTo(tx + w * 0.016f, plat - h * 0.012f); door.close()
-        c.drawPath(door, k.fill)
-        shikhara(k, c, tx, plat - h * 0.04f, w * 0.07f, w * 0.018f, towerH, sand)
-        // Smaller spires either side.
-        shikhara(k, c, tx - w * 0.13f, plat - h * 0.012f, w * 0.03f, w * 0.009f, h * 0.075f, sand)
-        shikhara(k, c, tx + w * 0.13f, plat - h * 0.012f, w * 0.03f, w * 0.009f, h * 0.075f, sand)
-        // Flagpole.
-        k.line.strokeWidth = 2f * k.unit; k.line.color = l.shade(0xFF3A2C22.toInt())
-        val topY = plat - h * 0.04f - towerH - towerH * 0.2f
-        c.drawLine(tx, topY, tx, topY - h * 0.045f, k.line)
-        // Lamp posts up the stairs.
-        for (i in 0..4) {
-            val f = i / 4f
-            val y = plat + (h * 0.755f - plat) * f; val x = tx + (if (i % 2 == 0) -1 else 1) * w * (0.03f + 0.04f * f)
-            k.fill.color = l.shade(0xFF4A3A2A.toInt())
-            c.drawRect(x - 1.5f * k.unit, y - h * 0.012f, x + 1.5f * k.unit, y, k.fill)
-        }
-        return bmp
-    }
-
-    private fun fore(k: PaintKit): Bitmap? {
-        val (c, bmp) = k.newLayer(layers[2]) ?: return null
-        val l = k.l; val h = k.h; val w = k.w
-        val rnd = Random(183)
-        val lit = l.foliage(0xFF4E9A3E.toInt()); val dark = l.foliage(0xFF1E4A24.toInt())
-        for (s in floatArrayOf(0.02f, 0.14f, 0.9f)) k.broadleaf(c, w * s, h * 1.02f, h * (0.2f + 0.05f * rnd.nextFloat()), k.jitter(lit, rnd, 0.15f), dark, l.shade(0xFF4A3628.toInt()), rnd, 0.6f)
-        return bmp
-    }
-
-    override fun drawAnimated(canvas: Canvas, stage: Int) {
-        if (stage != layers.size) return
-        val w = width.toFloat(); val h = height.toFloat()
-        val t = timeMs / 1000f
-        canvas.save(); canvas.translate(shift(0.5f), 0f)
-        // Saffron flag waving in the wind.
-        val topY = plat - h * 0.04f - towerH - towerH * 0.2f - h * 0.045f
-        val amp = h * (0.004f + windKmh / 40f * 0.006f)
-        flagPath.rewind()
-        flagPath.moveTo(tx, topY)
-        flagPath.quadTo(tx + w * 0.02f, topY + amp * sin(t * 4f), tx + w * 0.04f, topY + h * 0.008f + amp * sin(t * 4f + 1f))
-        flagPath.quadTo(tx + w * 0.02f, topY + h * 0.012f + amp * sin(t * 4f + 0.5f), tx, topY + h * 0.018f)
-        flagPath.close()
-        canvas.drawPath(flagPath, flag)
-        // Diyas flickering up the stairs once it is dark.
-        if (lighting.windowsLit) {
-            for (i in 0..4) {
-                val f = i / 4f
-                val y = plat + (h * 0.755f - plat) * f - h * 0.012f
-                val x = tx + (if (i % 2 == 0) -1 else 1) * w * (0.03f + 0.04f * f)
-                val fl = 0.75f + 0.25f * sin(t * 9f + i * 2.3f) * sin(t * 5.1f + i)
-                glowPaint.alpha = (255 * fl).toInt().coerceIn(0, 255)
-                canvas.save(); canvas.translate(x, y); canvas.scale(w * 0.02f, w * 0.02f); canvas.drawCircle(0f, 0f, 1f, glowPaint); canvas.restore()
-            }
-        }
-        canvas.restore()
-    }
-}
-
-/** A forest clearing at a campsite: a tent glowing from within and a crackling campfire with sparks. */
-class CampingLandscape : PaintedLandscape() {
-    override val layers = arrayOf(PaintLayer(0.34f, 0.64f, 0.08f), PaintLayer(0.46f, 0.72f, 0.4f), PaintLayer(0.60f, 1f, 0.9f))
-    private val flame = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val core = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val glow = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val spark = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFFC060.toInt() }
-    private val fpath = Path()
-    private val fx get() = width * 0.66f
-    private val fy get() = height * 0.745f
-
-    override fun build() {
-        glow.shader = RadialGradient(0f, 0f, 1f, intArrayOf(0xAAFFA040.toInt(), 0x44FF7A20, Color.TRANSPARENT), floatArrayOf(0f, 0.4f, 1f), Shader.TileMode.CLAMP)
-        flame.color = 0xFFFF7A1A.toInt(); core.color = 0xFFFFE08A.toInt()
-    }
-
-    override fun paintAll(k: PaintKit) = PaintResult(arrayOf(peaks(k), forest(k), clearing(k)))
-
-    private fun peaks(k: PaintKit): Bitmap? {
-        val (c, bmp) = k.newLayer(layers[0]) ?: return null
-        val l = k.l; val h = k.h
-        val rnd = Random(201)
-        k.mountain(c, Ridge(k.width, h * 0.52f, h * 0.13f, true, 22), h * 0.64f,
-            l.distant(l.ground(0xFF7C8EA6.toInt()), 0.4f), l.distant(l.ground(0xFF4E6078.toInt()), 0.4f), rnd, snowLine = h * 0.46f)
-        k.haze(c, h * 0.5f, h * 0.64f, 0.45f)
-        return bmp
-    }
-
-    private fun forest(k: PaintKit): Bitmap? {
-        val (c, bmp) = k.newLayer(layers[1]) ?: return null
-        val l = k.l; val h = k.h; val w = k.w
-        val rnd = Random(202)
-        val ridge = Ridge(k.width, h * 0.64f, h * 0.02f, false, 23)
-        k.hill(c, ridge, h * 0.72f, l.distant(l.ground(0xFF3D6B45.toInt()), 0.2f), l.ground(0xFF24402A.toInt()), rnd, 0)
-        val litP = l.distant(l.foliage(0xFF4C8255.toInt()), 0.2f); val darkP = l.distant(l.foliage(0xFF1C3A2A.toInt()), 0.2f); val trunk = l.shade(0xFF3A2C22.toInt())
-        for (row in 0 until 2) {
-            var x = -k.margin + rnd.nextFloat() * 10f
-            while (x < w + k.margin) {
-                val th = h * (0.07f + rnd.nextFloat() * 0.06f)
-                k.conifer(c, x, ridge.yAt(x) + th * (0.15f + row * 0.1f), th, k.jitter(litP, rnd, 0.2f), darkP, trunk, rnd, 0.45f)
-                x += (18f + rnd.nextFloat() * 20f) * k.unit
-            }
-        }
-        k.haze(c, h * 0.6f, h * 0.72f, 0.3f)
-        return bmp
-    }
-
-    private fun clearing(k: PaintKit): Bitmap? {
-        val (c, bmp) = k.newLayer(layers[2]) ?: return null
-        val l = k.l; val h = k.h; val w = k.w
-        val rnd = Random(203)
-        val ridge = Ridge(k.width, h * 0.68f, h * 0.012f, false, 24)
-        k.hill(c, ridge, h, l.ground(0xFF4E7A3A.toInt()), l.ground(0xFF253F1E.toInt()), rnd, 0)
-        k.grass(c, ridge, h, 2600, l.ground(0xFF7FA85A.toInt()), l.ground(0xFF1E3518.toInt()), rnd)
-        // The tent: an A-frame with a lit doorway.
-        val cx = w * 0.30f; val base = h * 0.735f; val hw = w * 0.13f; val th = h * 0.085f
-        k.fill.color = k.alpha(Color.BLACK, 60)
-        c.drawOval(cx - hw * 1.05f, base - h * 0.006f, cx + hw * 1.2f, base + h * 0.012f, k.fill)
-        val tent = Path(); tent.moveTo(cx - hw, base); tent.lineTo(cx, base - th); tent.lineTo(cx + hw, base); tent.close()
-        val col = l.shade(0xFFE0762E.toInt())
-        k.shader = LinearGradient(cx - hw, 0f, cx + hw, 0f,
-            if (k.sunOnLeft) k.lighten(col, 0.15f) else k.darken(col, 0.35f), if (k.sunOnLeft) k.darken(col, 0.35f) else k.lighten(col, 0.15f), Shader.TileMode.CLAMP)
-        c.drawPath(tent, k.fill)
-        k.shader = null
-        val door = Path(); door.moveTo(cx - hw * 0.28f, base); door.lineTo(cx, base - th * 0.72f); door.lineTo(cx + hw * 0.28f, base); door.close()
-        k.fill.color = if (l.windowsLit) 0xFFFFC060.toInt() else l.shade(0xFF2A1E16.toInt())
-        c.drawPath(door, k.fill)
-        if (l.windowsLit) {
-            k.shader = RadialGradient(cx, base - th * 0.3f, hw * 1.2f, 0x66FFB050, 0, Shader.TileMode.CLAMP)
-            c.drawCircle(cx, base - th * 0.3f, hw * 1.2f, k.fill)
-            k.shader = null
-        }
-        k.line.strokeWidth = 1.8f * k.unit; k.line.color = k.darken(col, 0.45f)
-        c.drawLine(cx, base - th, cx - hw * 0.28f, base, k.line); c.drawLine(cx, base - th, cx + hw * 0.28f, base, k.line)
-        k.line.color = k.alpha(l.shade(0xFFDDDDDD.toInt()), 150); k.line.strokeWidth = 1f * k.unit
-        c.drawLine(cx - hw * 0.5f, base - th * 0.5f, cx - hw * 1.15f, base + h * 0.004f, k.line)
-        c.drawLine(cx + hw * 0.5f, base - th * 0.5f, cx + hw * 1.15f, base + h * 0.004f, k.line)
-        // Fire ring stones, logs and a sitting log.
-        for (i in 0 until 9) {
-            val a = i / 9f * 6.283f
-            k.rock(c, fx + kotlin.math.cos(a) * w * 0.045f, fy + sin(a) * h * 0.006f + h * 0.008f, w * 0.012f, l.ground(0xFF8A847A.toInt()), rnd)
-        }
-        k.line.strokeWidth = 5f * k.unit; k.line.color = l.shade(0xFF4A3220.toInt())
-        c.drawLine(fx - w * 0.035f, fy + h * 0.004f, fx + w * 0.03f, fy - h * 0.002f, k.line)
-        c.drawLine(fx - w * 0.03f, fy - h * 0.002f, fx + w * 0.035f, fy + h * 0.004f, k.line)
-        k.line.strokeWidth = 10f * k.unit; k.line.color = l.shade(0xFF5A3E26.toInt())
-        c.drawLine(w * 0.50f, h * 0.775f, w * 0.60f, h * 0.78f, k.line)
-        // Trees framing the clearing.
-        val litP = l.foliage(0xFF4F8A4A.toInt()); val darkP = l.foliage(0xFF183322.toInt()); val trunk = l.shade(0xFF4A3628.toInt())
-        for (s in floatArrayOf(-0.03f, 0.07f, 0.93f, 1.03f)) k.conifer(c, w * s, h * 0.98f, h * (0.26f + 0.06f * rnd.nextFloat()), k.jitter(litP, rnd, 0.14f), darkP, trunk, rnd, 1f)
-        return bmp
-    }
-
-    override fun drawAnimated(canvas: Canvas, stage: Int) {
-        if (stage != layers.size) return
-        val w = width.toFloat(); val h = height.toFloat()
-        val t = timeMs / 1000f
-        canvas.save(); canvas.translate(shift(0.9f), 0f)
-        // Warm light on the ground, stronger the darker it is.
-        val dark = when (lighting.timeOfDay) {
-            com.skymood.domain.TimeOfDay.NIGHT -> 1f
-            com.skymood.domain.TimeOfDay.DUSK, com.skymood.domain.TimeOfDay.DAWN -> 0.6f
-            else -> if (lighting.windowsLit) 0.6f else 0.22f
-        }
-        val flick = 0.85f + 0.15f * sin(t * 11f) * sin(t * 7.3f)
-        glow.alpha = (255 * dark * flick).toInt().coerceIn(0, 255)
-        canvas.save(); canvas.translate(fx, fy - h * 0.012f); canvas.scale(w * 0.25f, w * 0.17f); canvas.drawCircle(0f, 0f, 1f, glow); canvas.restore()
-        // Flames: three tongues of different height.
-        for (i in 0 until 3) {
-            val hh = h * (0.036f + 0.014f * sin(t * (9f + i * 2f) + i * 1.7f)) * (if (i == 1) 1.25f else 0.85f)
-            val x = fx + (i - 1) * w * 0.012f
-            val sway = sin(t * (6f + i) + i) * w * 0.004f
-            fpath.rewind()
-            fpath.moveTo(x - w * 0.012f, fy)
-            fpath.quadTo(x - w * 0.01f + sway, fy - hh * 0.55f, x + sway * 2f, fy - hh)
-            fpath.quadTo(x + w * 0.01f + sway, fy - hh * 0.5f, x + w * 0.012f, fy)
-            fpath.close()
-            canvas.drawPath(fpath, flame)
-            canvas.save(); canvas.translate(0f, 0f); canvas.scale(0.55f, 0.6f, x, fy); canvas.drawPath(fpath, core); canvas.restore()
-        }
-        // Sparks drifting up.
-        for (i in 0 until 8) {
-            val ph = (t * 0.5f + i * 0.37f) % 1f
-            spark.alpha = (255 * (1f - ph)).toInt()
-            canvas.drawCircle(fx + sin(i * 5f + ph * 6f) * w * 0.02f, fy - h * 0.03f - ph * h * 0.1f, w * 0.0018f, spark)
         }
         canvas.restore()
     }

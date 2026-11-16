@@ -91,6 +91,7 @@ class SceneDirector(
         currentType = spec.type
 
         val land = landscapeFor(spec.landscape)
+        if (land !== landscape) land.onShown()
                 // The light comes from the sun by day and from the moon at night.
         val lightX = if (spec.timeOfDay == com.skymood.domain.TimeOfDay.NIGHT) spec.sky.moonX else spec.sky.sunX
         land.setConditions(spec.timeOfDay, spec.type, spec.windKmh, lightX, spec.atmosphere.clarityBucket)

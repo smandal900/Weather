@@ -15,6 +15,7 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
 import kotlin.math.sin
+import com.skymood.wallpaper.scenes.SkyGradient
 import com.skymood.wallpaper.fauna.FlowerBed
 import com.skymood.wallpaper.fauna.GroundSlot
 import com.skymood.wallpaper.fauna.MeadowSpec
@@ -622,444 +623,739 @@ class BeachLandscape : PaintedLandscape() {
     }
 }
 
-/** Open water to the horizon with a distant island; optionally a painted sailing boat on the swell. */
-class SeaLandscape(private val withBoat: Boolean) : PaintedLandscape() {
-    override val layers = arrayOf(PaintLayer(0.52f, 0.68f, 0.08f))
+// ---------------------------------------------------------------------------------------------
+// River valley
+// ---------------------------------------------------------------------------------------------
 
-    private var slots: List<GroundSlot> = emptyList()
-    private var slotsFor = 0
-    override fun groundSlots(): List<GroundSlot> {
-        if (slotsFor != width * 31 + height) {
-            slotsFor = width * 31 + height
-            slots = makeSlots(width.toFloat(), height.toFloat())
-        }
-        return slots
-    }
+private const val DEEP_RIVER = 0xFF1F5B64.toInt()
 
-    private fun makeSlots(w: Float, h: Float): List<GroundSlot> {
-        return listOf(GroundSlot(Species.DOLPHIN, 0.10f, 0.90f, GroundY { _ -> h * 0.82f }, 1f, 3))
-    }
+/** Ground distances (screen widths) of the nearest and furthest bits of river that are drawn. */
+private const val VALLEY_NEAR = 0.8f
+private const val VALLEY_FAR = 18f
+private const val VALLEY_DEPTH = 0.4f
+private const val RIVER_STREAKS = 80
 
-    private val water = Water(maxGlints = 64)
-    private val swellLines = FloatArray(SWELL_SEGMENTS * 4)
-    private val swellPaint = stroke()
-    private val lampPaint = fillPaint()
-    private val spritePaint = Paint(Paint.FILTER_BITMAP_FLAG)
-    private var horizon = 0f
-    private var boatX = 0f
+private fun valleySmooth(e0: Float, e1: Float, x: Float): Float {
+    val t = ((x - e0) / (e1 - e0)).coerceIn(0f, 1f)
+    return t * t * (3f - 2f * t)
+}
 
-    override fun build() {
-        val w = width.toFloat(); val h = height.toFloat(); val unit = w / 1080f
-        horizon = h * 0.64f
-        water.build(-w * 0.1f, w * 1.1f, horizon, h, unit)
-        swellPaint.strokeWidth = 2.5f * unit.coerceAtLeast(0.6f)
-        boatX = w * 0.62f
-    }
+/** Top and bottom of the mist that hangs over the far end of the valley around the horizon at [hy]. */
+private fun hazeTop(hy: Float, h: Float) = hy - h * 0.06f
+private fun hazeBottom(hy: Float, h: Float) = hy + h * 0.2f
 
-    override fun onLightingChanged() {
-        val l = lighting
-        water.applyLighting(l, DEEP_SEA, width)
-        swellPaint.color = l.shade(0xFFD8ECF5.toInt())
-        lampPaint.color = if (l.windowsLit) 0xFFFFD27A.toInt() else 0
-    }
+/** Mist that fades in above the horizon, is thickest there, and thins out towards the viewer. */
+private fun valleyHaze(sky: Int, clarity: Int, hy: Float, h: Float): LinearGradient {
+    val clear = sky and 0x00FFFFFF
+    val thick = (0.5f * (1f + (4 - clarity) * 0.35f)).coerceAtMost(0.95f)
+    val misty = clear or ((255 * thick).toInt() shl 24)
+    val mid = clear or ((255 * thick * 0.5f).toInt() shl 24)
+    return LinearGradient(
+        0f, hazeTop(hy, h), 0f, hazeBottom(hy, h), intArrayOf(clear, misty, mid, clear),
+        floatArrayOf(0f, 0.25f, 0.45f, 1f), Shader.TileMode.CLAMP,
+    )
+}
 
-    override fun paintAll(k: PaintKit): PaintResult {
-        val boat = if (withBoat) boat(k) else null
-        return PaintResult(arrayOf(island(k)), if (boat != null) mapOf("boat" to boat) else emptyMap())
-    }
+/**
+ * The ground plan of the valley. The river is laid out on the ground and projected, so its bends
+ * shrink and bunch up towards the horizon as they would in a real view: a point [d] screen-widths
+ * away, [x] screen-widths to the side, lands at `hy + (h - hy) / d` down and `0.5 + x / d` across.
+ * Everything else (field patches, trees, cottages, the banks) hangs off the same plan.
+ */
+private class ValleyGeom(val w: Float, val h: Float) {
+    val hy = h * 0.645f
+    val vx = w * 0.5f
+    val n = 96
+    val ys = FloatArray(n + 1)
+    val cx = FloatArray(n + 1)
+    val half = FloatArray(n + 1)
+    val dist = FloatArray(n + 1)
+    val gravL = FloatArray(n + 1)
+    val gravR = FloatArray(n + 1)
+    /** The gravel part of [gravL] / [gravR]: how far each point bar reaches out from the water. */
+    val barL = FloatArray(n + 1)
+    val barR = FloatArray(n + 1)
 
-    /** A small distant island with trees, almost lost in haze. */
-    private fun island(k: PaintKit): Bitmap? {
-        val (c, bmp) = k.newLayer(layers[0]) ?: return null
-        val l = k.l; val h = k.h; val w = k.w
-        val rnd = Random(71)
-        val hz = h * 0.64f
-        val cx = w * 0.82f
-        val half = w * 0.2f
-        val n = 40
-        val body = Path()
-        body.moveTo(cx - half, hz + 1f)
+    /** Sideways offset of the river's centre at ground distance [d]. */
+    fun bend(d: Float) = 0.30f * (0.75f * sin(0.85f * d + 1.7f) + 0.35f * sin(2.1f * d + 0.4f))
+    fun projX(x: Float, d: Float) = w * (0.5f + x / d)
+    fun projY(d: Float) = hy + (h - hy) / d
+
+    init {
         for (i in 0..n) {
-            val u = i / n.toFloat()
-            body.lineTo(cx - half + 2f * half * u, hz - h * 0.045f * sin(PI.toFloat() * u).pow(1.4f) * (0.8f + 0.2f * sin(u * 23f)))
+            // Far to near, evenly spaced in log distance so the far bends get enough samples.
+            val d = VALLEY_FAR * (VALLEY_NEAR / VALLEY_FAR).pow(i / n.toFloat())
+            val s = 1f / d
+            dist[i] = d
+            ys[i] = projY(d)
+            cx[i] = projX(bend(d), d)
+            // Wider on the straights, and narrowing to nothing as it winds out of sight.
+            // Pools and riffles: the channel widens and narrows rather than running parallel-sided.
+            val wobble = 0.88f + 0.16f * sin(d * 1.3f + 0.5f) + 0.07f * sin(d * 3.3f + 1f)
+            half[i] = w * 0.19f * s * wobble * (1f - 0.8f * valleySmooth(11f, VALLEY_FAR, d))
         }
-        body.lineTo(cx + half, hz + 1f)
-        body.close()
-        k.shader = LinearGradient(0f, hz - h * 0.03f, 0f, hz, l.distant(l.foliage(0xFF486E58.toInt()), 0.55f), l.distant(l.ground(0xFF7C8070.toInt()), 0.6f), Shader.TileMode.CLAMP)
-        c.drawPath(body, k.fill)
-        k.shader = null
-        val lit = l.distant(l.foliage(0xFF5A8A62.toInt()), 0.55f); val dark = l.distant(l.foliage(0xFF2F5240.toInt()), 0.55f)
-        for (i in 0 until 14) {
-            val u = 0.15f + 0.7f * rnd.nextFloat()
-            val x = cx - half + 2f * half * u
-            val top = hz - h * 0.045f * sin(PI.toFloat() * u).pow(1.4f)
-            k.simplePine(c, x, top + h * 0.004f, h * (0.008f + 0.008f * rnd.nextFloat()), lit, dark, rnd)
-        }
-        k.haze(c, h * 0.6f, h * 0.67f, 0.38f)
-        return bmp
-    }
-
-    /** A wooden sailboat: planked hull, shaded main sail and jib, mast, boom, rigging and a pennant. */
-    private fun boat(k: PaintKit): Bitmap? {
-        val s = k.unit * 1.15f
-        val bw = (280 * s).toInt(); val bh = (240 * s).toInt()
-        val (c, bmp) = k.newSprite(bw, bh) ?: return null
-        val l = k.l
-        val ox = bw / 2f; val oy = bh * 0.9f
-        fun px(x: Float) = ox + x * s
-        fun py(y: Float) = oy + y * s
-        val hull = Path()
-        hull.moveTo(px(-100f), py(-6f)); hull.lineTo(px(100f), py(-6f)); hull.lineTo(px(72f), py(24f)); hull.lineTo(px(-68f), py(24f)); hull.close()
-        val wood = l.shade(0xFF8A4B2A.toInt())
-        k.shader = LinearGradient(0f, py(-6f), 0f, py(24f), k.lighten(wood, 0.1f), k.darken(wood, 0.35f), Shader.TileMode.CLAMP)
-        c.drawPath(hull, k.fill)
-        k.shader = null
-        k.line.strokeWidth = max(1f, 1.5f * s)
-        k.line.color = k.alpha(Color.BLACK, 70)
-        for (i in 1..3) c.drawLine(px(-100f + i * 9f), py(-6f + i * 7f), px(100f - i * 9f), py(-6f + i * 7f), k.line)
-        k.fill.color = l.shade(0xFFF2EDE0.toInt())
-        c.drawRect(px(-98f), py(-8f), px(98f), py(-3f), k.fill)
-        // Sails: sun-side half lighter.
-        val sail = l.shade(0xFFF4EFE2.toInt())
-        val main = Path()
-        main.moveTo(px(6f), py(-175f)); main.quadTo(px(88f), py(-70f), px(82f), py(-16f)); main.lineTo(px(6f), py(-16f)); main.close()
-        k.shader = LinearGradient(px(6f), 0f, px(84f), 0f, if (k.sunOnLeft) sail else k.darken(sail, 0.28f), if (k.sunOnLeft) k.darken(sail, 0.28f) else sail, Shader.TileMode.CLAMP)
-        c.drawPath(main, k.fill)
-        val jib = Path()
-        jib.moveTo(px(-6f), py(-158f)); jib.quadTo(px(-72f), py(-70f), px(-80f), py(-16f)); jib.lineTo(px(-6f), py(-16f)); jib.close()
-        k.shader = LinearGradient(px(-80f), 0f, px(-6f), 0f, if (k.sunOnLeft) sail else k.darken(sail, 0.28f), if (k.sunOnLeft) k.darken(sail, 0.28f) else sail, Shader.TileMode.CLAMP)
-        c.drawPath(jib, k.fill)
-        k.shader = null
-        // Seams in the sails.
-        k.line.color = k.alpha(Color.BLACK, 28)
-        for (i in 1..4) {
-            val y = -16f - i * 30f
-            c.drawLine(px(6f), py(y), px(6f + (78f * (1f - (-y - 16f) / 160f)).coerceAtLeast(6f)), py(y + 4f), k.line)
-        }
-        // Mast, boom, rigging, pennant.
-        val mast = l.shade(0xFF4A3A2A.toInt())
-        k.line.color = mast
-        k.line.strokeWidth = max(1.5f, 3f * s)
-        c.drawLine(px(0f), py(-6f), px(0f), py(-182f), k.line)
-        c.drawLine(px(0f), py(-18f), px(86f), py(-14f), k.line)
-        k.line.strokeWidth = max(1f, 1f * s)
-        k.line.color = k.alpha(Color.BLACK, 110)
-        c.drawLine(px(0f), py(-180f), px(-95f), py(-6f), k.line)
-        c.drawLine(px(0f), py(-180f), px(92f), py(-6f), k.line)
-        val flag = Path()
-        flag.moveTo(px(0f), py(-182f)); flag.lineTo(px(-26f), py(-176f)); flag.lineTo(px(0f), py(-170f)); flag.close()
-        k.fill.color = l.shade(0xFFD6402F.toInt())
-        c.drawPath(flag, k.fill)
-        return bmp
-    }
-
-    override fun drawAnimated(canvas: Canvas, stage: Int) {
-        if (stage != 1) return
-        water.draw(canvas, timeMs, windKmh, shift(0.5f))
-        val t = timeMs / 1000f
-        val w = width.toFloat(); val h = height.toFloat()
-        val rough = 1f + windKmh / 25f
-        for (row in 0 until 4) {
-            val f = (row + 1) / 5f
-            val y0 = horizon + (h - horizon) * f * f
-            val amp = h * 0.004f * (1f + row) * rough
-            var n = 0
-            var px = 0f; var py = 0f
-            for (i in 0..SWELL_SEGMENTS) {
-                val x = -w * 0.1f + w * 1.2f * i / SWELL_SEGMENTS
-                val y = y0 + sin(x * (0.012f / (1f + row * 0.4f)) + t * (0.8f + row * 0.15f) + row) * amp
-                if (i > 0) { swellLines[n++] = px; swellLines[n++] = py; swellLines[n++] = x; swellLines[n++] = y }
-                px = x; py = y
-            }
-            swellPaint.alpha = (35 + row * 18).coerceAtMost(130)
-            canvas.save()
-            canvas.translate(shift(f), 0f)
-            canvas.drawLines(swellLines, 0, n, swellPaint)
-            canvas.restore()
-        }
-        val boat = sprites["boat"]
-        if (withBoat && boat != null) {
-            val s = w / 1080f * 1.15f
-            val by = h * 0.72f + sin(t * 1.3f) * h * 0.004f * rough
-            canvas.save()
-            canvas.translate(boatX + shift(0.7f), by)
-            canvas.rotate(sin(t * 1.1f) * 2.5f * rough)
-            canvas.drawBitmap(boat, -boat.width / 2f, -boat.height * 0.9f, spritePaint)
-            if (lampPaint.color != 0) canvas.drawCircle(0f, -150f * s, w / 200f, lampPaint)
-            canvas.restore()
+        // A thin earthen bank all along, and a crescent of gravel (a point bar) on the inside of each
+        // bend that tapers away on the straights, its outline ragged.
+        for (i in 0..n) {
+            val a = (i - 1).coerceAtLeast(0); val b = (i + 1).coerceAtMost(n)
+            val m0 = (cx[i] - cx[a]) / (ys[i] - ys[a] + 1e-3f)
+            val m1 = (cx[b] - cx[i]) / (ys[b] - ys[i] + 1e-3f)
+            val curve = (m1 - m0) / (ys[b] - ys[a] + 1e-3f) * 2f * half[i]
+            val bar = (curve * 3f).coerceIn(-1f, 1f)
+            val ragged = 0.75f + 0.35f * sin(dist[i] * 5.3f + 1f) + 0.25f * sin(dist[i] * 13f)
+            val bank = half[i] * (0.08f + 0.05f * sin(dist[i] * 4.1f))
+            barL[i] = half[i] * 1.1f * ((max(0f, -bar) - 0.2f) / 0.8f).coerceAtLeast(0f).pow(1.3f) * ragged
+            barR[i] = half[i] * 1.1f * ((max(0f, bar) - 0.2f) / 0.8f).coerceAtLeast(0f).pow(1.3f) * ragged
+            gravL[i] = bank + barL[i]
+            gravR[i] = bank + barR[i]
         }
     }
 
-    private companion object {
-        const val SWELL_SEGMENTS = 14
+    private fun find(y: Float): Int {
+        var lo = 0; var hi = n
+        while (hi - lo > 1) { val mid = (lo + hi) ushr 1; if (ys[mid] <= y) lo = mid else hi = mid }
+        return lo
+    }
+    private fun at(arr: FloatArray, y: Float): Float {
+        val i = find(y)
+        val f = ((y - ys[i]) / (ys[i + 1] - ys[i])).coerceIn(0f, 1f)
+        return arr[i] + (arr[i + 1] - arr[i]) * f
+    }
+    fun cxAt(y: Float) = at(cx, y)
+    fun halfAt(y: Float) = at(half, y)
+    fun leftEdge(y: Float) = cxAt(y) - halfAt(y)
+    fun rightEdge(y: Float) = cxAt(y) + halfAt(y)
+    /** Where the near bank on each side has to stop, clear of the gravel. */
+    fun leftBound(y: Float) = leftEdge(y) - at(gravL, y) - w * 0.012f
+    fun rightBound(y: Float) = rightEdge(y) + at(gravR, y) + w * 0.012f
+
+    fun waterPath(): Path {
+        val p = Path()
+        for (i in 0..n) if (i == 0) p.moveTo(cx[i] - half[i], ys[i]) else p.lineTo(cx[i] - half[i], ys[i])
+        for (i in n downTo 0) p.lineTo(cx[i] + half[i], ys[i])
+        p.close()
+        return p
     }
 
-    override fun update(dtMs: Long) {
-        super.update(dtMs)
-        if (withBoat) {
-            boatX += (8f + windKmh * 0.6f) * (width / 1080f) * dtMs / 1000f
-            if (boatX > width * 1.15f) boatX = -width * 0.15f
+    fun shorePath(): Path {
+        val p = Path()
+        for (i in 0..n) if (i == 0) p.moveTo(cx[i] - half[i] - gravL[i], ys[i]) else p.lineTo(cx[i] - half[i] - gravL[i], ys[i])
+        for (i in n downTo 0) p.lineTo(cx[i] + half[i] + gravR[i], ys[i])
+        p.close()
+        return p
+    }
+
+    /** The gravel bar on one side, from the water's edge out to [barL] / [barR]. */
+    fun barPath(side: Int): Path {
+        val p = Path()
+        val bar = if (side < 0) barL else barR
+        for (i in 0..n) {
+            val x = cx[i] + side * half[i]
+            if (i == 0) p.moveTo(x, ys[i]) else p.lineTo(x, ys[i])
         }
+        for (i in n downTo 0) p.lineTo(cx[i] + side * (half[i] + bar[i]), ys[i])
+        p.close()
+        return p
+    }
+
+    // ------------------------------------------------------------- the near banks
+
+    val leftTopEdge = h * 0.74f
+    val rightTopEdge = h * 0.75f
+    val leftEnd = h * 0.865f
+    val rightEnd = h * 0.9f
+    val leftXEnd = leftBound(leftEnd)
+    val rightXEnd = rightBound(rightEnd)
+
+    private fun bump(x: Float, ph: Float) = h * (0.005f * sin(x / w * 21f + ph) + 0.003f * sin(x / w * 57f + ph * 2f))
+
+    /** Crest of the near bank on the left: steep at the screen edge, easing down to the water. */
+    fun leftTop(x: Float): Float {
+        val x0 = -w * 0.12f
+        val t = ((x - x0) / (leftXEnd - x0)).coerceIn(0f, 1f)
+        return leftTopEdge + (leftEnd - leftTopEdge) * (1f - (1f - t).pow(2.2f)) + bump(x, 1f) * (1f - t)
+    }
+
+    fun rightTop(x: Float): Float {
+        val x1 = w * 1.12f
+        val t = ((x1 - x) / (x1 - rightXEnd)).coerceIn(0f, 1f)
+        return rightTopEdge + (rightEnd - rightTopEdge) * (1f - (1f - t).pow(2.2f)) + bump(x, 2.4f) * (1f - t)
+    }
+
+    fun slopePath(side: Int): Path {
+        val p = Path()
+        val steps = 48
+        if (side < 0) {
+            val x0 = -w * 0.12f
+            p.moveTo(x0, h * 1.04f)
+            for (i in 0..steps) { val x = x0 + (leftXEnd - x0) * i / steps; p.lineTo(x, leftTop(x)) }
+            for (i in 1..steps) { val y = leftEnd + (h * 1.04f - leftEnd) * i / steps; p.lineTo(leftBound(y), y) }
+        } else {
+            val x1 = w * 1.12f
+            p.moveTo(x1, h * 1.04f)
+            for (i in 0..steps) { val x = x1 + (rightXEnd - x1) * i / steps; p.lineTo(x, rightTop(x)) }
+            for (i in 1..steps) { val y = rightEnd + (h * 1.04f - rightEnd) * i / steps; p.lineTo(rightBound(y), y) }
+        }
+        p.close()
+        return p
     }
 }
 
-/** A still lake mirroring a mountain and forest shore, with reeds and rocks on the near bank. */
-class LakeLandscape : PaintedLandscape() {
+/** A wooded spur of the valley wall: crest height at the screen edge, and where it meets the floor. */
+private class Spur(val side: Int, val footX: Float, val footY: Float, val topY: Float, val tone: Float, val tree: Float, val seed: Float)
+
+// Far to near; each nearer spur is taller at the screen edge and hides the foot of the one behind.
+private val SPURS = listOf(
+    Spur(-1, 0.44f, 0.652f, 0.585f, 0.46f, 0.017f, 1f),
+    Spur(1, 0.57f, 0.651f, 0.575f, 0.46f, 0.017f, 2f),
+    Spur(-1, 0.31f, 0.668f, 0.548f, 0.33f, 0.026f, 3f),
+    Spur(1, 0.70f, 0.664f, 0.542f, 0.33f, 0.026f, 4f),
+    Spur(-1, 0.17f, 0.700f, 0.505f, 0.2f, 0.042f, 5f),
+    Spur(1, 0.87f, 0.696f, 0.500f, 0.2f, 0.042f, 6f),
+)
+
+/**
+ * A river winding out of snowy mountains down a wooded valley. Interlocking forested spurs close in
+ * on both sides, fields and cottages lie on the floor, and the river bends away in perspective,
+ * with gravel bars on the inside of each bend, wet banks, drifting ripples and rocks with foam.
+ */
+class RiverValleyLandscape : PaintedLandscape() {
+    override val layers = arrayOf(PaintLayer(0.3f, 0.7f, 0.06f), PaintLayer(0.4f, 1f, VALLEY_DEPTH), PaintLayer(0.5f, 1f, 1f))
+
+    private var geomCache: ValleyGeom? = null
+    private var geomFor = 0
+    private fun geom(): ValleyGeom {
+        val key = width * 31 + height
+        val g = geomCache
+        if (g != null && geomFor == key) return g
+        return ValleyGeom(width.toFloat(), height.toFloat()).also { geomCache = it; geomFor = key }
+    }
+
     private var meadowSpec: MeadowSpec? = null
     private var meadowFor = 0
     override fun meadow(): MeadowSpec {
-        if (meadowSpec == null || meadowFor != width * 31 + height) {
-            meadowFor = width * 31 + height
-            val w = width.toFloat(); val h = height.toFloat()
-            val r = Ridge(width, h * 0.89f, h * 0.02f, false, 33)
+        val key = width * 31 + height
+        if (meadowSpec == null || meadowFor != key) {
+            meadowFor = key
+            val g = geom(); val w = g.w; val h = g.h
+            val py = h * 0.945f
             meadowSpec = MeadowSpec(
-                listOf(FlowerBed(0.02f, 0.98f, GroundY { x -> r.yAt(x) + h * 0.01f }, h * 0.07f, 14)),
-                // A snag out in the water, fished from the far bank side of the ducks.
-                Perch(w * 0.82f, h * 0.835f, h * 0.045f, h * 0.8f, 1.2f),
+                listOf(
+                    FlowerBed(0f, g.leftXEnd / w, GroundY { x -> g.leftTop(x) + h * 0.012f }, h * 0.05f, 9),
+                    FlowerBed(g.rightXEnd / w, 1f, GroundY { x -> g.rightTop(x) + h * 0.012f }, h * 0.05f, 9),
+                ),
+                // A snag standing in the shallows at the water's edge, fished from by the kingfisher.
+                Perch(g.leftEdge(py) + g.halfAt(py) * 0.3f, py, h * 0.05f, py - h * 0.01f, 1.6f),
             )
         }
         return meadowSpec!!
     }
-    override val layers = arrayOf(PaintLayer(0.42f, 0.66f, 0.05f), PaintLayer(0.82f, 1f, 1f))
 
     private var slots: List<GroundSlot> = emptyList()
     private var slotsFor = 0
     override fun groundSlots(): List<GroundSlot> {
-        if (slotsFor != width * 31 + height) {
-            slotsFor = width * 31 + height
-            slots = makeSlots(width.toFloat(), height.toFloat())
+        val key = width * 31 + height
+        if (slotsFor != key) {
+            slotsFor = key
+            slots = makeSlots(geom())
         }
         return slots
     }
 
-    private fun makeSlots(w: Float, h: Float): List<GroundSlot> {
-        return listOf(GroundSlot(Species.DUCK, 0.15f, 0.85f, GroundY { _ -> h * 0.77f }, 1.3f, 3))
+    private fun makeSlots(g: ValleyGeom): List<GroundSlot> {
+        val w = g.w; val h = g.h
+        val yNear = h * 0.935f; val yFar = h * 0.805f
+        val frogY = h * 0.965f
+        val cowY = h * 0.95f
+        return listOf(
+            GroundSlot(Species.DUCK, (g.cxAt(yNear) - g.halfAt(yNear) * 0.6f) / w, (g.cxAt(yNear) + g.halfAt(yNear) * 0.6f) / w, GroundY { _ -> yNear }, 1.5f, 2),
+            GroundSlot(Species.DUCK, (g.cxAt(yFar) - g.halfAt(yFar) * 0.5f) / w, (g.cxAt(yFar) + g.halfAt(yFar) * 0.5f) / w, GroundY { _ -> yFar }, 0.85f, 1),
+            // Frogs in the grass at the water's edge, and a lone wild ox on the right bank.
+            GroundSlot(Species.FROG, (g.leftBound(frogY) - w * 0.12f) / w, (g.leftBound(frogY) - w * 0.01f) / w, GroundY { _ -> frogY }, 1.7f, 2),
+            GroundSlot(Species.FROG, (g.rightBound(frogY) + w * 0.01f) / w, (g.rightBound(frogY) + w * 0.14f) / w, GroundY { _ -> frogY }, 1.7f, 1),
+            GroundSlot(Species.WILD_COW, 0.8f, 0.93f, GroundY { _ -> cowY }, 0.9f, 1),
+        )
     }
 
-    private val water = Water()
-    private val reeds = Path()
-    private val reedPaint = stroke()
-    private val mirror = Paint(Paint.FILTER_BITMAP_FLAG).apply { alpha = 95 }
-    private var horizon = 0f
-    private var shoreTop = 0f
+    // ---------------------------------------------------------------- animated parts
+
+    private val water = Water(0)
+    private var river = Path()
+    private val edgePaint = stroke()
+    private val shadePaint = Paint()
+    private val hazePaint = Paint()
+    private val skyPaint = Paint()
+    private val lightStreak = stroke()
+    private val darkStreak = stroke()
+    private val foamPaint = fillPaint()
+    private val rockPaint = fillPaint()
+    private val capPaint = fillPaint()
+    private val rockBody = Path()
+    private val rockCap = Path()
+    private var vertsL = FloatArray(0)
+    private var vertsR = FloatArray(0)
+    private var shadeColors = IntArray(0)
+    private val sd = FloatArray(RIVER_STREAKS); private val sv = FloatArray(RIVER_STREAKS); private val sl = FloatArray(RIVER_STREAKS)
+    private val rockD = floatArrayOf(1.9f, 2.7f, 3.9f, 6.2f)
+    private val rockV = floatArrayOf(0.5f, -0.4f, 0.25f, -0.45f)
+    private val rockS = floatArrayOf(1f, 0.8f, 1.1f, 0.9f)
+    private var unitPx = 1f
 
     override fun build() {
-        val w = width.toFloat(); val h = height.toFloat(); val unit = w / 1080f
-        horizon = h * 0.66f
-        shoreTop = h * 0.86f
-        water.build(-w * 0.1f, w * 1.1f, horizon, shoreTop + h * 0.02f, unit)
-        reeds.rewind()
-        val rnd = Random(81)
-        var x = -w * 0.05f
-        while (x < w * 1.05f) {
-            if (rnd.nextFloat() < 0.5f) {
-                val rh = h * (0.03f + rnd.nextFloat() * 0.04f)
-                reeds.moveTo(x, shoreTop + h * 0.035f)
-                reeds.quadTo(x + rh * 0.1f, shoreTop + h * 0.035f - rh * 0.6f, x + rh * 0.2f, shoreTop + h * 0.035f - rh)
-            }
-            x += 9f * unit
+        val g = geom()
+        val w = g.w; val h = g.h
+        unitPx = w / 1080f
+        river = g.waterPath()
+        water.build(-w * 0.1f, w * 1.1f, g.hy, h, unitPx)
+        val rows = g.n + 1
+        vertsL = FloatArray(rows * 4); vertsR = FloatArray(rows * 4); shadeColors = IntArray(rows * 2)
+        for (i in 0..g.n) {
+            vertsL[i * 4] = g.cx[i] - g.half[i]; vertsL[i * 4 + 1] = g.ys[i]
+            vertsL[i * 4 + 2] = g.cx[i] - g.half[i] * 0.6f; vertsL[i * 4 + 3] = g.ys[i]
+            vertsR[i * 4] = g.cx[i] + g.half[i]; vertsR[i * 4 + 1] = g.ys[i]
+            vertsR[i * 4 + 2] = g.cx[i] + g.half[i] * 0.6f; vertsR[i * 4 + 3] = g.ys[i]
         }
-        reedPaint.strokeWidth = 2.5f * unit.coerceAtLeast(0.6f)
+        val rnd = Random(5)
+        for (i in 0 until RIVER_STREAKS) {
+            sd[i] = VALLEY_FAR * (VALLEY_NEAR / VALLEY_FAR).pow(rnd.nextFloat())
+            sv[i] = (rnd.nextFloat() * 2f - 1f) * 0.88f
+            sl[i] = 0.5f + rnd.nextFloat()
+        }
+        // One lumpy boulder, drawn at unit size and scaled for each rock in the stream.
+        rockBody.rewind()
+        rockBody.moveTo(-1f, 0f)
+        for (i in 0..16) {
+            val a = PI.toFloat() + PI.toFloat() * i / 16f
+            rockBody.lineTo(cos(a), sin(a) * 0.75f * (0.85f + 0.2f * sin(a * 3f)))
+        }
+        rockBody.lineTo(1f, 0f)
+        rockBody.close()
+        rockCap.rewind()
+        rockCap.addOval(-0.6f, -0.7f, 0.25f, -0.18f, Path.Direction.CW)
     }
 
     override fun onLightingChanged() {
-        water.applyLighting(lighting, DEEP_LAKE, width)
-        reedPaint.color = lighting.foliage(0xFF5E8A38.toInt())
+        val g = geomCache ?: return
+        val l = lighting
+        water.applyLighting(l, DEEP_RIVER, width)
+        val dark = l.shade(0xFF06241F.toInt()) and 0x00FFFFFF
+        for (i in 0..g.n) {
+            // Shade under the banks fades out towards the far end, where the river is a thread.
+            val a = (150 * valleySmooth(0.01f, 0.12f, 1f / g.dist[i])).toInt()
+            shadeColors[i * 2] = dark or (a shl 24)
+            shadeColors[i * 2 + 1] = dark
+        }
+        val bank = l.ground(0xFF3E4A32.toInt()) and 0x00FFFFFF
+        edgePaint.shader = LinearGradient(
+            0f, g.hy, 0f, g.hy + g.h * 0.1f, bank, bank or (140 shl 24), Shader.TileMode.CLAMP,
+        )
+        edgePaint.strokeWidth = 2.4f * unitPx.coerceAtLeast(0.6f)
+        hazePaint.shader = valleyHaze(l.skyBottom, l.clarity, g.hy, g.h)
+        // Still water mirrors the sky, most of all at a low angle, so the far river takes on the
+        // colour of the sky (pale blue by day, orange at dusk) and the near water shows more of its depth.
+        // It mirrors the higher sky as well as the horizon band, which is bluer and darker, so at
+        // dusk the water stays distinct from the glowing ground instead of turning into a pale path.
+        val sky = SkyGradient.blend(l.skyBottom, SkyGradient.topColor(l.weather, l.timeOfDay), 0.5f) and 0x00FFFFFF
+        skyPaint.shader = LinearGradient(0f, g.hy, 0f, g.h, sky or (140 shl 24), sky or (40 shl 24), Shader.TileMode.CLAMP)
+        lightStreak.color = SkyGradient.blend(l.skyBottom, 0xFFFFFFFF.toInt(), 0.6f)
+        darkStreak.color = l.shade(0xFF0B3038.toInt())
+        foamPaint.color = l.shade(0xFFFFFFFF.toInt())
+        rockPaint.color = l.ground(0xFF6D7178.toInt())
+        capPaint.color = SkyGradient.blend(rockPaint.color, 0xFFFFFFFF.toInt(), 0.22f)
     }
 
-    override fun paintAll(k: PaintKit) = PaintResult(arrayOf(farShore(k), nearBank(k)))
+    override fun drawAnimated(canvas: Canvas, stage: Int) {
+        if (stage != 2 || bitmap(1) == null) return
+        val g = geomCache ?: return
+        val t = timeMs / 1000f
+        canvas.save()
+        canvas.translate(shift(VALLEY_DEPTH), 0f)
+        canvas.save()
+        canvas.clipPath(river)
+        water.draw(canvas, timeMs, windKmh + 6f, 0f)
+        canvas.drawRect(-g.w * 0.1f, g.hy, g.w * 1.1f, g.h * 1.1f, skyPaint)
+        drawStreaks(canvas, g, t)
+        val count = (g.n + 1) * 2
+        canvas.drawVertices(Canvas.VertexMode.TRIANGLE_STRIP, count * 2, vertsL, 0, null, 0, shadeColors, 0, null, 0, 0, shadePaint)
+        canvas.drawVertices(Canvas.VertexMode.TRIANGLE_STRIP, count * 2, vertsR, 0, null, 0, shadeColors, 0, null, 0, 0, shadePaint)
+        canvas.drawRect(-g.w * 0.1f, hazeTop(g.hy, g.h), g.w * 1.1f, hazeBottom(g.hy, g.h), hazePaint)
+        canvas.restore()
+        // A soft wet line along both banks hides the hard edge of the clip.
+        canvas.drawPath(river, edgePaint)
+        drawRocks(canvas, g, t)
+        canvas.restore()
+    }
 
-    private fun farShore(k: PaintKit): Bitmap? {
+    private fun drawStreaks(canvas: Canvas, g: ValleyGeom, t: Float) {
+        val range = VALLEY_FAR - VALLEY_NEAR
+        val flow = 0.05f * (1f + windKmh / 60f)
+        for (i in 0 until RIVER_STREAKS) {
+            val d = VALLEY_NEAR + (((sd[i] - VALLEY_NEAR - t * flow) % range) + range) % range
+            val fade = min(1f, min((VALLEY_FAR - d) / 3f, (d - VALLEY_NEAR) / 0.4f))
+            if (fade < 0.15f) continue
+            val s = 1f / d
+            val y = g.hy + (g.h - g.hy) * s
+            val x = g.cxAt(y) + sv[i] * g.halfAt(y)
+            val len = g.w * 0.03f * s * sl[i] + 1.5f
+            val p = if (i % 3 == 0) darkStreak else lightStreak
+            p.alpha = ((if (i % 3 == 0) 80 else 120) * fade).toInt()
+            p.strokeWidth = max(1f, 2.4f * s * unitPx)
+            canvas.drawLine(x - len, y, x + len, y, p)
+        }
+    }
+
+    private fun drawRocks(canvas: Canvas, g: ValleyGeom, t: Float) {
+        val rough = roughness(windKmh)
+        for (i in rockD.indices) {
+            val s = 1f / rockD[i]
+            val y = g.projY(rockD[i])
+            val x = g.cxAt(y) + rockV[i] * g.halfAt(y)
+            val r = g.w * 0.05f * s * rockS[i]
+            canvas.save()
+            canvas.translate(x, y)
+            canvas.scale(r, r)
+            canvas.drawPath(rockBody, rockPaint)
+            canvas.drawPath(rockCap, capPaint)
+            canvas.restore()
+            // Water piles up against the rock and trails away downstream.
+            foamDots(canvas, foamPaint, x - r * 1.5f, x + r * 1.5f, y + r * 0.12f, 7, t, max(1.2f, r * 0.09f), rough)
+            foamDots(canvas, foamPaint, x - r * 0.9f, x + r * 0.9f, y + r * 0.45f, 5, t + 1f, max(1f, r * 0.07f), rough)
+        }
+    }
+
+    // ---------------------------------------------------------------- painted scenery
+
+    override fun paintAll(k: PaintKit): PaintResult {
+        val g = ValleyGeom(k.w, k.h)
+        return PaintResult(arrayOf(farPeaks(k), valley(k, g), banks(k, g)))
+    }
+
+    private fun farPeaks(k: PaintKit): Bitmap? {
         val (c, bmp) = k.newLayer(layers[0]) ?: return null
         val l = k.l; val h = k.h
-        val rnd = Random(82)
-        val horizon = h * 0.66f
-        k.mountain(
-            c, Ridge(k.width, horizon, h * 0.14f, true, 30), horizon + 1f,
-            l.distant(l.ground(0xFF7B8CA4.toInt()), 0.4f), l.distant(l.ground(0xFF566880.toInt()), 0.4f), rnd,
-            snowLine = horizon - h * 0.115f,
+        // A high snowy range far off, and a lower, darker, bluer range in front of it, so the
+        // mountains read as ranges receding into the distance and not as one grey slab.
+        k.peaks(
+            c, Ridge(k.width, h * 0.63f, h * 0.27f, true, 40), h * 0.7f,
+            l.distant(l.ground(0xFF8896AD.toInt()), 0.34f), l.distant(l.ground(0xFF55657E.toInt()), 0.34f),
+            Random(90), snowLine = h * 0.5f, snowDepth = 0.2f,
         )
-        // Forest at the water's edge.
-        val shore = Ridge(k.width, horizon, h * 0.01f, false, 31)
-        val lit = l.distant(l.foliage(0xFF3F7550.toInt()), 0.25f); val dark = l.distant(l.foliage(0xFF1C3A2A.toInt()), 0.25f)
-        k.fill.color = l.distant(l.foliage(0xFF24452F.toInt()), 0.25f)
-        c.drawRect(-k.margin, horizon - h * 0.006f, k.w + k.margin, horizon + 1f, k.fill)
-        var x = -k.margin
-        while (x < k.w + k.margin) {
-            val th = h * (0.02f + rnd.nextFloat() * 0.03f)
-            k.conifer(c, x, shore.yAt(x) + 1f, th, k.jitter(lit, rnd, 0.2f), dark, l.shade(0xFF33261C.toInt()), rnd, 0.3f)
-            x += (9f + rnd.nextFloat() * 8f) * k.unit
-        }
-        k.haze(c, h * 0.5f, horizon, 0.3f)
+        k.haze(c, h * 0.46f, h * 0.66f, 0.4f)
+        k.peaks(
+            c, Ridge(k.width, h * 0.665f, h * 0.15f, true, 47), h * 0.7f,
+            l.distant(l.ground(0xFF5F7089.toInt()), 0.26f), l.distant(l.ground(0xFF3B4A62.toInt()), 0.26f),
+            Random(93), snowLine = h * 0.55f, snowDepth = 0.1f,
+        )
+        k.haze(c, h * 0.56f, h * 0.7f, 0.3f)
         return bmp
     }
 
-    private fun nearBank(k: PaintKit): Bitmap? {
+    /** The valley floor, its fields and cottages, the shore, and the forested walls closing in on both sides. */
+    private fun valley(k: PaintKit, g: ValleyGeom): Bitmap? {
         val (c, bmp) = k.newLayer(layers[1]) ?: return null
-        val l = k.l; val h = k.h; val w = k.w
-        val rnd = Random(83)
-        val ridge = Ridge(k.width, h * 0.89f, h * 0.02f, false, 33)
-        k.hill(c, ridge, h, l.ground(0xFF4E7A3A.toInt()), l.ground(0xFF21401C.toInt()), rnd, 300)
-        for (i in 0 until 9) {
-            val x = w * (i / 8f) + (rnd.nextFloat() - 0.5f) * w * 0.08f
-            k.rock(c, x, ridge.yAt(x) + h * 0.012f, w * (0.012f + 0.02f * rnd.nextFloat()), l.ground(0xFF7A7F86.toInt()), rnd)
-        }
-        k.grass(c, ridge, h, 1600, l.ground(0xFF7FA85A.toInt()), l.ground(0xFF1E3518.toInt()), rnd)
-        k.flowers(c, ridge, h, 40, rnd)
-        return bmp
-    }
-
-    override fun drawAnimated(canvas: Canvas, stage: Int) {
-        val w = width.toFloat()
-        if (stage == 1) {
-            water.draw(canvas, timeMs, windKmh, shift(0.5f))
-            val far = bitmap(0) ?: return
-            // Mirror image of the far shore, squashed and faint, clipped to the water.
-            canvas.save()
-            canvas.clipRect(0f, horizon, w, shoreTop + height * 0.02f)
-            canvas.translate(0f, horizon)
-            canvas.scale(1f, -0.7f)
-            canvas.translate(0f, -horizon)
-            canvas.drawBitmap(far, -margin + shift(0.05f), height * layers[0].top, mirror)
-            canvas.restore()
-        } else if (stage == layers.size) {
-            val t = timeMs / 1000f
-            canvas.save()
-            canvas.translate(shift(1f) + sin(t * (1f + windKmh / 20f)) * (1f + windKmh / 15f), 0f)
-            canvas.drawPath(reeds, reedPaint)
-            canvas.restore()
-        }
-    }
-}
-
-/** A river winding out of the mountains through a green valley, between wooded slopes. */
-class RiverValleyLandscape : PaintedLandscape() {
-    private var meadowSpec: MeadowSpec? = null
-    private var meadowFor = 0
-    override fun meadow(): MeadowSpec {
-        if (meadowSpec == null || meadowFor != width * 31 + height) {
-            meadowFor = width * 31 + height
-            val w = width.toFloat(); val h = height.toFloat()
-            meadowSpec = MeadowSpec(emptyList(), Perch(w * 0.36f, h * 0.945f, h * 0.05f, h * 0.935f, 1.6f))
-        }
-        return meadowSpec!!
-    }
-    override val layers = arrayOf(PaintLayer(0.42f, 1f, 0.1f), PaintLayer(0.62f, 1f, 1f))
-
-    private var slots: List<GroundSlot> = emptyList()
-    private var slotsFor = 0
-    override fun groundSlots(): List<GroundSlot> {
-        if (slotsFor != width * 31 + height) {
-            slotsFor = width * 31 + height
-            slots = makeSlots(width.toFloat(), height.toFloat())
-        }
-        return slots
-    }
-
-    private fun makeSlots(w: Float, h: Float): List<GroundSlot> {
-        return listOf(GroundSlot(Species.DUCK, 0.33f, 0.59f, GroundY { _ -> h * 0.95f }, 1.5f, 2))
-    }
-
-    private val water = Water()
-    private val river = Path()
-
-    override fun build() {
-        val w = width.toFloat(); val h = height.toFloat(); val unit = w / 1080f
-        river.rewind()
-        val top = h * 0.69f
-        val n = 40
-        for (i in 0..n) {
-            val f = i / n.toFloat()
-            val y = top + (h - top) * f
-            val half = w * (0.006f + 0.2f * f * f)
-            val cx = w * 0.5f + sin(f * 7f) * w * 0.12f * f
-            if (i == 0) river.moveTo(cx - half, y) else river.lineTo(cx - half, y)
-        }
-        for (i in n downTo 0) {
-            val f = i / n.toFloat()
-            val y = top + (h - top) * f
-            val half = w * (0.006f + 0.2f * f * f)
-            val cx = w * 0.5f + sin(f * 7f) * w * 0.12f * f
-            river.lineTo(cx + half, y)
-        }
-        river.close()
-        water.build(0f, w, top, h, unit)
-    }
-
-    override fun onLightingChanged() = water.applyLighting(lighting, DEEP_LAKE, width)
-
-    override fun paintAll(k: PaintKit) = PaintResult(arrayOf(valley(k), banks(k)))
-
-    private fun valley(k: PaintKit): Bitmap? {
-        val (c, bmp) = k.newLayer(layers[0]) ?: return null
         val l = k.l; val h = k.h; val w = k.w
         val rnd = Random(91)
-        k.mountain(
-            c, Ridge(k.width, h * 0.66f, h * 0.17f, true, 40), h * 0.74f,
-            l.distant(l.ground(0xFF76889F.toInt()), 0.38f), l.distant(l.ground(0xFF4E6078.toInt()), 0.38f), rnd, snowLine = h * 0.52f,
-        )
-        val floor = Ridge(k.width, h * 0.7f, h * 0.012f, false, 41)
-        k.hill(c, floor, h, l.distant(l.ground(0xFF76A85E.toInt()), 0.2f), l.ground(0xFF3F7A35.toInt()), rnd, 500)
-        k.fields(c, floor, h, rnd, 5)
-        val lit = l.distant(l.foliage(0xFF5C9A58.toInt()), 0.3f); val dark = l.distant(l.foliage(0xFF28553A.toInt()), 0.3f)
-        var x = -k.margin
-        while (x < w + k.margin) {
-            if (abs(x - w * 0.5f) > w * 0.12f) {
-                val th = h * (0.02f + rnd.nextFloat() * 0.02f)
-                k.simplePine(c, x, floor.yAt(x) + th * 0.2f, th, k.jitter(lit, rnd, 0.2f), dark, rnd)
+
+        // The far end of the valley: low rolling ground with a fringe of pines, where the river winds out of sight.
+        val floor = Ridge(k.width, g.hy + h * 0.004f, h * 0.014f, false, 41)
+        k.hill(c, floor, h, l.distant(l.ground(0xFF7DAE5C.toInt()), 0.45f), l.ground(0xFF4A8638.toInt()), rnd, 220)
+        val pineLit = l.distant(l.foliage(0xFF5C9A58.toInt()), 0.4f); val pineDark = l.distant(l.foliage(0xFF28553A.toInt()), 0.4f)
+        var px = -k.margin
+        while (px < w + k.margin) {
+            if (abs(px - w * 0.5f) > w * 0.04f) {
+                val th = h * (0.012f + rnd.nextFloat() * 0.014f)
+                k.simplePine(c, px, floor.yAt(px) + th * 0.2f, th, k.jitter(pineLit, rnd, 0.2f), pineDark, rnd)
             }
-            x += 7f + rnd.nextFloat() * 9f
+            px += 6f + rnd.nextFloat() * 8f
         }
-        k.haze(c, h * 0.6f, h * 0.78f, 0.35f)
+
+        fields(k, c, g, rnd)
+        farmland(k, c, g, rnd)
+        shore(k, c, g, rnd)
+        for (sp in SPURS) spur(k, c, g, sp, rnd)
+
+        // Distance: mist hangs over the far end of the valley and thins towards the viewer.
+        k.shader = valleyHaze(l.skyBottom, l.clarity, g.hy, h)
+        c.drawRect(-k.margin, hazeTop(g.hy, h), w + k.margin, hazeBottom(g.hy, h), k.fill)
+        k.shader = null
         return bmp
     }
 
-    private fun banks(k: PaintKit): Bitmap? {
-        val (c, bmp) = k.newLayer(layers[1]) ?: return null
-        val l = k.l; val h = k.h; val w = k.w
-        val rnd = Random(92)
-        val left = Path()
-        left.moveTo(-w * 0.1f, h * 0.72f); left.quadTo(w * 0.15f, h * 0.76f, w * 0.24f, h); left.lineTo(-w * 0.1f, h); left.close()
-        val right = Path()
-        right.moveTo(w * 1.1f, h * 0.7f); right.quadTo(w * 0.85f, h * 0.78f, w * 0.8f, h); right.lineTo(w * 1.1f, h); right.close()
-        val lit = l.foliage(0xFF3F7A4B.toInt()); val dark = l.foliage(0xFF17301F.toInt())
-        for (slope in arrayOf(left, right)) {
-            c.save()
-            c.clipPath(slope)
-            k.shader = LinearGradient(0f, h * 0.7f, 0f, h, l.ground(0xFF4E8A3E.toInt()), l.ground(0xFF21401C.toInt()), Shader.TileMode.CLAMP)
-            c.drawRect(-k.margin, h * 0.68f, w + k.margin, h, k.fill)
-            k.shader = null
-            for (i in 0 until 600) {
-                val x = -k.margin + rnd.nextFloat() * (w + k.margin * 2)
-                val y = h * (0.7f + 0.3f * rnd.nextFloat())
-                val bh = h * (0.005f + 0.014f * rnd.nextFloat())
-                k.line.strokeWidth = (1f + rnd.nextFloat() * 1.5f) * k.unit
-                k.line.color = k.mix(l.ground(0xFF1E3518.toInt()), l.ground(0xFF8FC060.toInt()), rnd.nextFloat())
-                c.drawLine(x, y, x + (rnd.nextFloat() - 0.5f) * bh, y - bh, k.line)
+    /** Patchwork fields laid out on the ground and projected, so furrows run to the vanishing point. */
+    private fun fields(k: PaintKit, c: Canvas, g: ValleyGeom, rnd: Random) {
+        val l = k.l
+        val colors = intArrayOf(
+            0xFF8DB84F.toInt(), 0xFF6C9A3F.toInt(), 0xFFA3BE52.toInt(), 0xFF5E9A3E.toInt(),
+            0xFFD2C25E.toInt(), 0xFFE4CF45.toInt(), 0xFF9A7B52.toInt(), 0xFFB7C45A.toInt(),
+        )
+        val p = Path()
+        var dA = 2.3f
+        while (dA < 15f) {
+            val dB = dA * (1.25f + rnd.nextFloat() * 0.12f)
+            var x0 = -2.4f
+            while (x0 < 2.4f) {
+                val x1 = x0 + 0.28f + rnd.nextFloat() * 0.5f
+                val dm = (dA + dB) * 0.5f
+                // Leave a strip of meadow along the river.
+                if (x1 > g.bend(dm) - 0.32f && x0 < g.bend(dm) + 0.32f) { x0 = x1 + 0.03f; continue }
+                val d0 = dA * (1f + rnd.nextFloat() * 0.04f); val d1 = dB * (1f - rnd.nextFloat() * 0.04f)
+                p.rewind()
+                p.moveTo(g.projX(x0, d0), g.projY(d0)); p.lineTo(g.projX(x1, d0), g.projY(d0))
+                p.lineTo(g.projX(x1, d1), g.projY(d1)); p.lineTo(g.projX(x0, d1), g.projY(d1))
+                p.close()
+                val col = colors[rnd.nextInt(colors.size)]
+                k.fill.color = l.distant(l.ground(col), 0.06f + 0.4f * dm / VALLEY_FAR)
+                c.drawPath(p, k.fill)
+                // Furrows and a darker hedge along the near edge.
+                k.line.strokeWidth = max(1f, 1.6f * k.unit / dm)
+                k.line.color = k.alpha(Color.BLACK, 28)
+                val rows = 5
+                for (f in 1..rows) {
+                    val x = x0 + (x1 - x0) * f / (rows + 1f)
+                    c.drawLine(g.projX(x, d0), g.projY(d0), g.projX(x, d1), g.projY(d1), k.line)
+                }
+                k.line.strokeWidth = max(1.2f, 2.4f * k.unit / dm)
+                k.line.color = k.alpha(l.distant(l.foliage(0xFF3C6A34.toInt()), 0.1f + 0.4f * dm / VALLEY_FAR), 170)
+                c.drawLine(g.projX(x0, d0), g.projY(d0), g.projX(x1, d0), g.projY(d0), k.line)
+                x0 = x1 + 0.03f + rnd.nextFloat() * 0.05f
             }
+            dA = dB * 1.04f
+        }
+    }
+
+    /** Cottages and trees on the floor of the valley, the nearer ones drawn last. */
+    private fun farmland(k: PaintKit, c: Canvas, g: ValleyGeom, rnd: Random) {
+        val l = k.l; val w = k.w
+        val trunk = l.shade(0xFF4A3A2C.toInt())
+        var wall = 0
+        class Tree(val x: Float, val y: Float, val th: Float, val d: Float)
+        val list = ArrayList<Tree>()
+        // Poplars and willows following the river, alternating banks.
+        val riverD = floatArrayOf(2.3f, 3.0f, 3.9f, 5.0f, 6.4f, 8.2f, 10.5f, 13f)
+        for ((i, d) in riverD.withIndex()) {
+            val side = if (i % 2 == 0) 1 else -1
+            val off = 0.19f + 0.1f + rnd.nextFloat() * 0.16f
+            list.add(Tree(g.projX(g.bend(d) + side * off, d), g.projY(d), w * 0.25f / d * (0.8f + 0.4f * rnd.nextFloat()), d))
+        }
+        // Single trees and small groves scattered over the fields.
+        repeat(16) {
+            val d = 3f + rnd.nextFloat() * 10f
+            val x = (rnd.nextFloat() * 2f - 1f) * 1.4f
+            if (abs(x - g.bend(d)) < 0.4f) return@repeat
+            list.add(Tree(g.projX(x, d), g.projY(d), w * 0.2f / d * (0.7f + 0.6f * rnd.nextFloat()), d))
+        }
+        list.sortByDescending { it.d }
+        for (t in list) {
+            val far = 0.06f + 0.5f * t.d / VALLEY_FAR
+            k.broadleaf(
+                c, t.x, t.y, t.th, k.jitter(l.distant(l.foliage(0xFF5C9A44.toInt()), far), rnd, 0.2f),
+                l.distant(l.foliage(0xFF2A5A30.toInt()), far), trunk, rnd, 0.6f,
+            )
+            // Cottages tucked beside the trees.
+            if (wall < 2 && (t.d > 5f && t.d < 11f) && abs(t.x - w * 0.5f) > w * 0.12f) {
+                val hw = w * 0.1f / t.d
+                k.cottage(c, t.x + t.th * 0.9f * (if (t.x < w * 0.5f) -1f else 1f), t.y + 2f, hw, hw * 0.8f, 0xFFE8DCC4.toInt(), 0xFFB5523B.toInt())
+                wall++
+            }
+        }
+    }
+
+    /** Muddy banks along the water, gravel bars on the inside of the bends, pebbles and lush grass. */
+    private fun shore(k: PaintKit, c: Canvas, g: ValleyGeom, rnd: Random) {
+        val l = k.l; val u = k.unit
+        // The earthen bank, softened into the meadow by a wide band of grass colour along its outer edge.
+        k.fill.color = l.ground(0xFF6F6A4A.toInt())
+        c.drawPath(g.shorePath(), k.fill)
+        for (i in 0 until g.n) {
+            val s = 1f / g.dist[i]
+            k.line.strokeWidth = (2f + 12f * s) * u
+            k.line.color = k.alpha(l.ground(0xFF5E8A3E.toInt()), 150)
+            c.drawLine(g.cx[i] - g.half[i] - g.gravL[i], g.ys[i], g.cx[i + 1] - g.half[i + 1] - g.gravL[i + 1], g.ys[i + 1], k.line)
+            c.drawLine(g.cx[i] + g.half[i] + g.gravR[i], g.ys[i], g.cx[i + 1] + g.half[i + 1] + g.gravR[i + 1], g.ys[i + 1], k.line)
+        }
+        // Gravel bars.
+        k.fill.color = l.ground(0xFFA79E86.toInt())
+        c.drawPath(g.barPath(-1), k.fill)
+        c.drawPath(g.barPath(1), k.fill)
+        // Wet mud and sand where the water laps the bank.
+        for (i in 0 until g.n) {
+            val s = 1f / g.dist[i]
+            k.line.strokeWidth = (2f + 14f * s) * u
+            k.line.color = k.alpha(l.ground(0xFF5C5440.toInt()), 200)
+            c.drawLine(g.cx[i] - g.half[i], g.ys[i], g.cx[i + 1] - g.half[i + 1], g.ys[i + 1], k.line)
+            c.drawLine(g.cx[i] + g.half[i], g.ys[i], g.cx[i + 1] + g.half[i + 1], g.ys[i + 1], k.line)
+        }
+        val tones = intArrayOf(0xFF8C8A84.toInt(), 0xFFB5A98C.toInt(), 0xFF6E6C68.toInt(), 0xFFCFC4A6.toInt(), 0xFF7E7566.toInt())
+        for (i in 0..g.n) {
+            val s = 1f / g.dist[i]
+            for (side in intArrayOf(-1, 1)) {
+                val bar = if (side < 0) g.barL[i] else g.barR[i]
+                val grav = if (side < 0) g.gravL[i] else g.gravR[i]
+                // Pebbles scattered over the bars.
+                if (bar > 2f * u) repeat(3) {
+                    val off = g.half[i] + bar * rnd.nextFloat()
+                    k.fill.color = k.jitter(l.ground(tones[rnd.nextInt(tones.size)]), rnd, 0.2f)
+                    val r = (0.8f + 3.4f * s) * u * (0.6f + rnd.nextFloat() * 0.8f)
+                    c.drawOval(g.cx[i] + side * off - r, g.ys[i] - r * 0.6f, g.cx[i] + side * off + r, g.ys[i] + r * 0.6f, k.fill)
+                }
+                // Grass and rushes growing right down to the bank, taller where there is no gravel.
+                val outer = g.half[i] + grav
+                repeat(5) {
+                    val bh = g.h * (0.005f + 0.017f * s) * (0.6f + rnd.nextFloat()) * (if (bar > 2f * u) 0.7f else 1.15f)
+                    val x = g.cx[i] + side * (outer + (rnd.nextFloat() - 0.35f) * g.half[i] * 0.25f)
+                    k.line.strokeWidth = max(1f, (1f + 1.8f * s) * u)
+                    k.line.color = k.mix(l.ground(0xFF2E5A24.toInt()), l.ground(0xFF8FC060.toInt()), rnd.nextFloat())
+                    c.drawLine(x, g.ys[i], x + (rnd.nextFloat() - 0.5f) * bh * 0.6f, g.ys[i] - bh, k.line)
+                }
+            }
+        }
+    }
+
+    /** One wooded spur of the valley wall, its trees standing on the slope from the crest down to the floor. */
+    private fun spur(k: PaintKit, c: Canvas, g: ValleyGeom, sp: Spur, rnd: Random) {
+        val l = k.l; val w = k.w; val h = k.h
+        val left = sp.side < 0
+        val edge = if (left) -w * 0.12f else w * 1.12f
+        val fx = sp.footX * w; val fy = sp.footY * h; val ey = sp.topY * h
+        // The foot of the wall runs down a perspective line from the vanishing point out to the screen edge.
+        val toeEdge = g.hy + (fy - g.hy) * (abs(g.vx - edge) / max(1f, abs(g.vx - fx)))
+        val m = 60
+        val xs = FloatArray(m + 1); val ys = FloatArray(m + 1)
+        val p1x = edge + (fx - edge) * 0.1f; val p1y = ey + (fy - ey) * 0.55f
+        val p2x = fx - (fx - edge) * 0.45f; val p2y = fy - (fy - ey) * 0.04f
+        for (i in 0..m) {
+            val t = i / m.toFloat(); val u = 1f - t
+            xs[i] = u * u * u * edge + 3f * u * u * t * p1x + 3f * u * t * t * p2x + t * t * t * fx
+            ys[i] = u * u * u * ey + 3f * u * u * t * p1y + 3f * u * t * t * p2y + t * t * t * fy +
+                h * (0.005f * sin(t * 11f + sp.seed) + 0.003f * sin(t * 29f + sp.seed * 2f)) * t * (1f - t) * 4f
+        }
+        if (!left) { xs.reverse(); ys.reverse() }
+        fun crest(x: Float) = interp(xs, ys, x)
+        fun toe(x: Float) = fy + (toeEdge - fy) * (x - fx) / (edge - fx)
+
+        val body = Path()
+        body.moveTo(xs[0], ys[0])
+        for (i in 1..m) body.lineTo(xs[i], ys[i])
+        body.lineTo(edge, toeEdge)
+        body.close()
+
+        val top = l.distant(l.foliage(0xFF557F4B.toInt()), sp.tone)
+        val bottom = l.distant(l.foliage(0xFF2B5535.toInt()), sp.tone * 0.85f)
+        c.save()
+        c.clipPath(body)
+        k.shader = LinearGradient(0f, ey, 0f, toeEdge, top, bottom, Shader.TileMode.CLAMP)
+        c.drawRect(min(edge, fx), ey - h * 0.01f, max(edge, fx), toeEdge + 1f, k.fill)
+        k.shader = null
+        // The wall facing the sun is bright, the opposite one in shade.
+        val lit = left != k.sunOnLeft
+        k.fill.color = if (lit) k.alpha(Color.WHITE, 16) else k.alpha(Color.BLACK, 62)
+        c.drawRect(min(edge, fx), ey - h * 0.01f, max(edge, fx), toeEdge + 1f, k.fill)
+        // Clearings and alpine meadows among the trees.
+        repeat(5) {
+            val x = min(edge, fx) + abs(fx - edge) * (0.1f + 0.7f * rnd.nextFloat())
+            val a = crest(x); val b = toe(x)
+            val cy = a + (b - a) * (0.3f + 0.5f * rnd.nextFloat())
+            val rx = w * (0.03f + 0.05f * rnd.nextFloat())
+            k.fill.color = k.alpha(l.distant(l.ground(0xFF8DB760.toInt()), sp.tone), 85)
+            c.drawOval(x - rx, cy - rx * 0.28f, x + rx, cy + rx * 0.28f, k.fill)
+        }
+        c.restore()
+
+        // Trees, thickest where the wall is tallest, drawn from the crest down so lower ones overlap.
+        val th0 = sp.tree * h
+        val area = abs(fx - edge) * (toeEdge - ey) * 0.5f
+        val count = (area / (th0 * th0 * 0.22f)).toInt().coerceIn(30, 260)
+        val tx = FloatArray(count); val ty = FloatArray(count)
+        for (i in 0 until count) {
+            val x = edge + (fx - edge) * (1f - kotlin.math.sqrt(rnd.nextFloat()))
+            val a = crest(x); val b = toe(x)
+            tx[i] = x
+            ty[i] = a + (b - a) * (0.03f + 0.97f * rnd.nextFloat().pow(0.8f))
+        }
+        val lit0 = l.distant(l.foliage(0xFF4E8A55.toInt()), sp.tone); val dark0 = l.distant(l.foliage(0xFF1E4430.toInt()), sp.tone)
+        val trunk = l.shade(0xFF33261C.toInt())
+        for (i in (0 until count).sortedBy { ty[it] }) {
+            val a = crest(tx[i]); val b = toe(tx[i])
+            val f = if (b - a > 1f) ((ty[i] - a) / (b - a)).coerceIn(0f, 1f) else 0f
+            val th = th0 * (0.72f + 0.55f * f) * (0.85f + 0.3f * rnd.nextFloat())
+            if (th > h * 0.035f) k.conifer(c, tx[i], ty[i], th, k.jitter(lit0, rnd, 0.2f), dark0, trunk, rnd, 0.3f)
+            else k.simplePine(c, tx[i], ty[i], th, k.jitter(lit0, rnd, 0.2f), dark0, rnd)
+        }
+    }
+
+    /** The near banks either side of the water: grassy slopes with tall conifers, bushes, reeds and boulders. */
+    private fun banks(k: PaintKit, g: ValleyGeom): Bitmap? {
+        val (c, bmp) = k.newLayer(layers[2]) ?: return null
+        val l = k.l; val h = k.h; val w = k.w; val u = k.unit
+        val rnd = Random(92)
+        val lit = l.foliage(0xFF3F7A4B.toInt()); val dark = l.foliage(0xFF17301F.toInt())
+        val trunk = l.shade(0xFF3A2C22.toInt())
+
+        for (side in intArrayOf(-1, 1)) {
+            val x0 = if (side < 0) -k.margin else g.rightXEnd - w * 0.05f
+            val x1 = if (side < 0) g.leftXEnd + w * 0.05f else w + k.margin
+            fun top(x: Float) = if (side < 0) g.leftTop(x) else g.rightTop(x)
+            c.save()
+            c.clipPath(g.slopePath(side))
+            k.shader = LinearGradient(0f, h * 0.72f, 0f, h, l.ground(0xFF5A9345.toInt()), l.ground(0xFF224A20.toInt()), Shader.TileMode.CLAMP)
+            c.drawRect(x0, h * 0.68f, x1, h * 1.04f, k.fill)
+            k.shader = null
+            repeat((900 * u).toInt()) {
+                val x = x0 + rnd.nextFloat() * (x1 - x0)
+                val d = rnd.nextFloat()
+                val y = top(x) + (h - top(x)) * d
+                val bh = h * (0.005f + 0.017f * d) * (0.6f + rnd.nextFloat())
+                k.line.strokeWidth = (1f + rnd.nextFloat() * 1.6f) * u
+                k.line.color = k.mix(l.ground(0xFF1E3518.toInt()), l.ground(0xFF8FC060.toInt()), rnd.nextFloat())
+                c.drawLine(x, y, x + (rnd.nextFloat() - 0.5f) * bh * 0.6f, y - bh, k.line)
+            }
+            // A bright rim where the grass catches the light along the crest.
+            k.line.strokeWidth = 2f * u
+            k.line.color = k.alpha(k.lighten(l.ground(0xFF8FC060.toInt()), 0.3f), 110)
+            var x = x0
+            while (x < x1) { c.drawLine(x, top(x) + 1f, x + 8f * u, top(x + 8f * u) + 1f, k.line); x += 8f * u }
             c.restore()
         }
-        for (i in 0 until 7) {
-            val x = w * 0.01f + i * w * 0.035f
-            val th = h * (0.1f + rnd.nextFloat() * 0.08f)
-            k.conifer(c, x, h * (0.76f + i * 0.026f), th, k.jitter(lit, rnd, 0.14f), dark, l.shade(0xFF3A2C22.toInt()), rnd, 0.8f)
-        }
-        for (i in 0 until 6) {
-            val x = w * 0.99f - i * w * 0.035f
-            val th = h * (0.1f + rnd.nextFloat() * 0.08f)
-            k.conifer(c, x, h * (0.75f + i * 0.026f), th, k.jitter(lit, rnd, 0.14f), dark, l.shade(0xFF3A2C22.toInt()), rnd, 0.8f)
-        }
-        for (i in 0 until 5) k.rock(c, w * (0.2f + 0.6f * rnd.nextFloat()), h * (0.97f + 0.02f * rnd.nextFloat()), w * (0.015f + 0.02f * rnd.nextFloat()), l.ground(0xFF70767E.toInt()), rnd)
-        return bmp
-    }
 
-    override fun drawAnimated(canvas: Canvas, stage: Int) {
-        if (stage != 1) return
-        canvas.save()
-        canvas.translate(shift(0.6f), 0f)
-        canvas.clipPath(river)
-        water.draw(canvas, timeMs, windKmh + 10f, 0f)
-        canvas.restore()
+        // Conifers standing on each slope; the lower ones in front.
+        class Pine(val x: Float, val y: Float, val th: Float)
+        val pines = ArrayList<Pine>()
+        for (i in 0 until 6) {
+            val x = (w * (0.005f + 0.046f * i) + (rnd.nextFloat() - 0.5f) * w * 0.03f).coerceAtMost(g.leftXEnd - w * 0.04f)
+            pines.add(Pine(x, g.leftTop(x) + h * (0.012f + 0.05f * rnd.nextFloat()), h * (0.09f + 0.09f * rnd.nextFloat())))
+        }
+        for (i in 0 until 5) {
+            val x = (w * (0.99f - 0.05f * i) + (rnd.nextFloat() - 0.5f) * w * 0.03f).coerceAtLeast(g.rightXEnd + w * 0.05f)
+            pines.add(Pine(x, g.rightTop(x) + h * (0.012f + 0.05f * rnd.nextFloat()), h * (0.09f + 0.09f * rnd.nextFloat())))
+        }
+        pines.sortBy { it.y }
+        for (p in pines) k.conifer(c, p.x, p.y, p.th, k.jitter(lit, rnd, 0.14f), dark, trunk, rnd, 0.8f)
+
+        // A couple of leafy bushes at the water's edge for variety.
+        val bushLit = l.foliage(0xFF6AA845.toInt()); val bushDark = l.foliage(0xFF2B5A2E.toInt())
+        val lx = g.leftXEnd - w * 0.07f
+        k.broadleaf(c, lx, g.leftTop(lx) + h * 0.035f, h * 0.055f, bushLit, bushDark, trunk, rnd, 0.6f)
+        val rx = g.rightXEnd + w * 0.08f
+        k.broadleaf(c, rx, g.rightTop(rx) + h * 0.04f, h * 0.06f, bushLit, bushDark, trunk, rnd, 0.6f)
+
+        // Reeds along the water's edge.
+        val reedA = l.foliage(0xFF6D9A3E.toInt()); val reedB = l.foliage(0xFF3A5E26.toInt())
+        for (side in intArrayOf(-1, 1)) repeat(120) {
+            val y = h * (0.865f + 0.15f * rnd.nextFloat())
+            val bx = if (side < 0) g.leftBound(y) - rnd.nextFloat() * w * 0.025f else g.rightBound(y) + rnd.nextFloat() * w * 0.025f
+            val len = h * (0.012f + 0.03f * rnd.nextFloat()) * (0.6f + (y / h - 0.865f) * 4f)
+            k.line.strokeWidth = (1.5f + rnd.nextFloat() * 1.5f) * u
+            k.line.color = k.mix(reedB, reedA, rnd.nextFloat())
+            c.drawLine(bx, y, bx + (rnd.nextFloat() - 0.5f) * len * 0.5f, y - len, k.line)
+        }
+
+        // Boulders where the slopes meet the water.
+        for (side in intArrayOf(-1, 1)) repeat(3) {
+            val y = h * (0.9f + 0.09f * rnd.nextFloat())
+            val x = if (side < 0) g.leftBound(y) - rnd.nextFloat() * w * 0.1f else g.rightBound(y) + rnd.nextFloat() * w * 0.1f
+            k.rock(c, x, y, w * (0.015f + 0.02f * rnd.nextFloat()), l.ground(0xFF70767E.toInt()), rnd)
+        }
+        return bmp
     }
 }
 
@@ -1077,7 +1373,12 @@ class WaterfallLandscape : PaintedLandscape() {
         if (slotsFor != width * 31 + height) {
             slotsFor = width * 31 + height
             val h = height.toFloat()
-            slots = listOf(GroundSlot(Species.DUCK, 0.2f, 0.8f, GroundY { _ -> h * 0.93f }, 1.3f, 2))
+            slots = listOf(
+                GroundSlot(Species.DUCK, 0.2f, 0.8f, GroundY { _ -> h * 0.93f }, 1.3f, 2),
+                // Frogs on the mossy banks either side of the pool.
+                GroundSlot(Species.FROG, 0.05f, 0.22f, GroundY { _ -> h * 0.955f }, 1.7f, 2),
+                GroundSlot(Species.FROG, 0.78f, 0.95f, GroundY { _ -> h * 0.955f }, 1.7f, 1),
+            )
         }
         return slots
     }

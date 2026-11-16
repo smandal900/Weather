@@ -49,10 +49,22 @@ class Water(private val maxGlints: Int = 70) {
         reflectPaint.strokeWidth = 3f * unit.coerceAtLeast(0.6f)
     }
 
-    fun applyLighting(lighting: Lighting, deep: Int, screenWidth: Int) {
-        val near = SkyGradient.blend(lighting.skyBottom, deep, 0.35f)
+    /**
+     * [deep] is the colour of the water in the middle distance. Give a [shallow] colour for a
+     * third stop at the bottom edge (a lagoon that clears towards the viewer), and a [horizon]
+     * colour when the far water should differ from [deep] (open sea beyond a lagoon is darker).
+     */
+    fun applyLighting(lighting: Lighting, deep: Int, screenWidth: Int, shallow: Int = 0, horizon: Int = deep) {
+        val near = SkyGradient.blend(lighting.skyBottom, horizon, 0.35f)
         val far = lighting.shade(deep)
-        bodyPaint.shader = LinearGradient(0f, top, 0f, bottom, near, far, Shader.TileMode.CLAMP)
+        bodyPaint.shader = if (shallow == 0) {
+            LinearGradient(0f, top, 0f, bottom, near, far, Shader.TileMode.CLAMP)
+        } else {
+            LinearGradient(
+                0f, top, 0f, bottom, intArrayOf(near, far, lighting.shade(shallow)),
+                floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP,
+            )
+        }
         glintPaint.color = SkyGradient.blend(lighting.skyBottom, 0xFFFFFFFF.toInt(), 0.5f)
         reflection = lighting.reflection
         reflectPaint.color = reflection

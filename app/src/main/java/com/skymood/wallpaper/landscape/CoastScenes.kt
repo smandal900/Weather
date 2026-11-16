@@ -8,6 +8,9 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RadialGradient
 import android.graphics.Shader
+import com.skymood.wallpaper.fauna.GroundSlot
+import com.skymood.wallpaper.fauna.GroundY
+import com.skymood.wallpaper.fauna.Species
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
@@ -21,6 +24,21 @@ class HarborLandscape : PaintedLandscape() {
     private val water = Water(maxGlints = 60)
     private val spritePaint = Paint(Paint.FILTER_BITMAP_FLAG)
     private val foam = Paint(Paint.ANTI_ALIAS_FLAG)
+
+    private var slots: List<GroundSlot> = emptyList()
+    private var slotsFor = 0
+    override fun groundSlots(): List<GroundSlot> {
+        if (slotsFor != width * 31 + height) {
+            slotsFor = width * 31 + height
+            val h = height.toFloat()
+            // Gulls stand about on the breakwater and along the top of the quay wall.
+            slots = listOf(
+                GroundSlot(Species.GULL, 0.46f, 0.9f, GroundY { _ -> h * 0.677f }, 1.15f, 3),
+                GroundSlot(Species.GULL, 0.05f, 0.34f, GroundY { _ -> h * 0.657f }, 1f, 1),
+            )
+        }
+        return slots
+    }
 
     override fun build() {
         val w = width.toFloat(); val h = height.toFloat()
@@ -170,6 +188,21 @@ class FrozenLakeLandscape : PaintedLandscape() {
     private val sparkle = Paint(Paint.ANTI_ALIAS_FLAG)
     private val spx = FloatArray(28); private val spy = FloatArray(28); private val spp = FloatArray(28)
 
+    private var slots: List<GroundSlot> = emptyList()
+    private var slotsFor = 0
+    override fun groundSlots(): List<GroundSlot> {
+        if (slotsFor != width * 31 + height) {
+            slotsFor = width * 31 + height
+            val h = height.toFloat()
+            // An arctic fox crossing the ice (it turns white here) and deer standing at the snowy shore.
+            slots = listOf(
+                GroundSlot(Species.DEER, 0.08f, 0.5f, GroundY { _ -> h * 0.705f }, 0.8f, 2),
+                GroundSlot(Species.FOX, 0.08f, 0.58f, GroundY { _ -> h * 0.745f }, 1.1f, 1),
+            )
+        }
+        return slots
+    }
+
     override fun build() {
         val rnd = Random(141)
         for (i in 0 until 28) { spx[i] = width * (0.04f + 0.92f * rnd.nextFloat()); spy[i] = height * (0.68f + 0.28f * rnd.nextFloat()); spp[i] = rnd.nextFloat() * 6.28f }
@@ -280,6 +313,21 @@ class MangroveBackwatersLandscape : PaintedLandscape() {
     override val layers = arrayOf(PaintLayer(0.46f, 0.64f, 0.08f), PaintLayer(0.40f, 0.86f, 0.55f), PaintLayer(0.86f, 1f, 1f))
     private val water = Water(maxGlints = 40)
     private val spritePaint = Paint(Paint.FILTER_BITMAP_FLAG)
+
+    private var slots: List<GroundSlot> = emptyList()
+    private var slotsFor = 0
+    override fun groundSlots(): List<GroundSlot> {
+        if (slotsFor != width * 31 + height) {
+            slotsFor = width * 31 + height
+            val h = height.toFloat()
+            // Frogs on the muddy banks at the waterline, either side of the houseboat.
+            slots = listOf(
+                GroundSlot(Species.FROG, 0.08f, 0.34f, GroundY { _ -> h * 0.705f }, 1.5f, 2),
+                GroundSlot(Species.FROG, 0.66f, 0.92f, GroundY { _ -> h * 0.705f }, 1.5f, 2),
+            )
+        }
+        return slots
+    }
 
     override fun build() {
         val w = width.toFloat(); val h = height.toFloat()

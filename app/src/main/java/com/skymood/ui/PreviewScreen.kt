@@ -3,6 +3,7 @@ package com.skymood.ui
 import android.content.Context
 import android.graphics.Canvas
 import android.os.SystemClock
+import android.view.Choreographer
 import android.view.View
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -33,8 +34,23 @@ class ScenePreviewView(context: Context) : View(context) {
 
     private val director = SceneDirector()
     private var lastFrame = 0L
+    private var vsyncMs = 0L
     private var shown = false
     private var frameInterval = 33L
+
+    /**
+     * Redraws are paced by the display's vsync, like the wallpaper itself: a frame is only requested
+     * on the vsync that best matches the frame-rate cap, so the gaps between frames are always a
+     * whole number of refreshes and steady motion stays even instead of juddering.
+     */
+    private val vsync = object : Choreographer.FrameCallback {
+        override fun doFrame(frameTimeNanos: Long) {
+            if (!shown) return
+            vsyncMs = frameTimeNanos / 1_000_000L
+            if (vsyncMs - lastFrame >= frameInterval - 4L) invalidate()
+            Choreographer.getInstance().postFrameCallback(this)
+        }
+    }
 
     fun setSpec(spec: SceneSpec) {
         frameInterval = 1000L / spec.fpsCap
@@ -48,18 +64,27 @@ class ScenePreviewView(context: Context) : View(context) {
 
     override fun onVisibilityAggregated(isVisible: Boolean) {
         super.onVisibilityAggregated(isVisible)
+        Choreographer.getInstance().removeFrameCallback(vsync)
         shown = isVisible
         lastFrame = SystemClock.uptimeMillis()
-        if (isVisible) invalidate()
+        if (isVisible) {
+            invalidate()
+            Choreographer.getInstance().postFrameCallback(vsync)
+        }
+    }
+
+    override fun onDetachedFromWindow() {
+        shown = false
+        Choreographer.getInstance().removeFrameCallback(vsync)
+        super.onDetachedFromWindow()
     }
 
     override fun onDraw(canvas: Canvas) {
-        val now = SystemClock.uptimeMillis()
+        // Time from the vsync that triggered this draw, so every step is a whole number of refreshes.
+        val now = if (vsyncMs > lastFrame) vsyncMs else SystemClock.uptimeMillis()
         val dt = if (lastFrame == 0L) 0L else (now - lastFrame).coerceIn(0L, 100L)
         lastFrame = now
         director.update(dt)
         director.draw(canvas)
-        // Leave room for the wait until the next vsync so the preview gets close to the cap.
-        if (shown) postInvalidateDelayed((frameInterval - 12L).coerceAtLeast(0L))
     }
 }

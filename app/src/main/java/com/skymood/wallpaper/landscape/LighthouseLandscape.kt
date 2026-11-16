@@ -35,6 +35,21 @@ class LighthouseLandscape : PaintedLandscape() {
     private val beam = Path()
     private var lit = false
 
+    private var slots: List<com.skymood.wallpaper.fauna.GroundSlot> = emptyList()
+    private var slotsFor = 0
+    override fun groundSlots(): List<com.skymood.wallpaper.fauna.GroundSlot> {
+        if (slotsFor != width * 31 + height) {
+            slotsFor = width * 31 + height
+            val h = height.toFloat()
+            // Gulls stand on the rock top either side of the tower.
+            slots = listOf(
+                com.skymood.wallpaper.fauna.GroundSlot(com.skymood.wallpaper.fauna.Species.GULL, 0.56f, 0.68f, com.skymood.wallpaper.fauna.GroundY { _ -> h * 0.712f }, 1.15f, 2),
+                com.skymood.wallpaper.fauna.GroundSlot(com.skymood.wallpaper.fauna.Species.GULL, 0.82f, 0.94f, com.skymood.wallpaper.fauna.GroundY { _ -> h * 0.703f }, 1.1f, 1),
+            )
+        }
+        return slots
+    }
+
     // Tower geometry, in fractions of the screen so paint and animation agree.
     private val towerX get() = width * 0.74f
     private val baseY get() = height * 0.70f

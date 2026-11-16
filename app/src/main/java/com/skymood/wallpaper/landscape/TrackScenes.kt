@@ -14,10 +14,41 @@ import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.random.Random
 
-/** A railway along a hillside: telegraph poles, rolling green hills and a passenger train that passes now and then. */
+/** A railway along a hillside: an overhead line, rolling green hills and trains of different kinds that pass one after another. */
 class RailwayHillsLandscape : PaintedLandscape() {
     override val layers = arrayOf(PaintLayer(0.36f, 0.62f, 0.08f), PaintLayer(0.44f, 0.80f, 0.5f), PaintLayer(0.72f, 1f, 1f))
     private val train = TrainRenderer()
+
+    private var meadowSpec: com.skymood.wallpaper.fauna.MeadowSpec? = null
+    private var meadowFor = 0
+    override fun meadow(): com.skymood.wallpaper.fauna.MeadowSpec {
+        if (meadowSpec == null || meadowFor != width * 31 + height) {
+            meadowFor = width * 31 + height
+            val h = height.toFloat()
+            val r = Ridge(width, h * 0.8f, h * 0.02f, false, 27)
+            meadowSpec = com.skymood.wallpaper.fauna.MeadowSpec(listOf(
+                com.skymood.wallpaper.fauna.FlowerBed(0.02f, 0.98f, com.skymood.wallpaper.fauna.GroundY { x -> r.yAt(x) }, h * 0.07f, 14),
+            ))
+        }
+        return meadowSpec!!
+    }
+
+    private var slots: List<com.skymood.wallpaper.fauna.GroundSlot> = emptyList()
+    private var slotsFor = 0
+    override fun groundSlots(): List<com.skymood.wallpaper.fauna.GroundSlot> {
+        if (slotsFor != width * 31 + height) {
+            slotsFor = width * 31 + height
+            val h = height.toFloat()
+            val r = Ridge(width, h * 0.8f, h * 0.02f, false, 27)
+            // Sheep and a cow on the hillside below the line, and a fox that comes out at dusk.
+            slots = listOf(
+                com.skymood.wallpaper.fauna.GroundSlot(com.skymood.wallpaper.fauna.Species.SHEEP, 0.1f, 0.9f, com.skymood.wallpaper.fauna.GroundY { x -> r.yAt(x) + h * 0.06f }, 1.2f, 3),
+                com.skymood.wallpaper.fauna.GroundSlot(com.skymood.wallpaper.fauna.Species.COW, 0.1f, 0.5f, com.skymood.wallpaper.fauna.GroundY { x -> r.yAt(x) + h * 0.085f }, 1.35f, 1),
+                com.skymood.wallpaper.fauna.GroundSlot(com.skymood.wallpaper.fauna.Species.FOX, 0.2f, 0.8f, com.skymood.wallpaper.fauna.GroundY { x -> r.yAt(x) + h * 0.1f }, 1.3f, 1),
+            )
+        }
+        return slots
+    }
 
     override fun build() {}
     override fun paintAll(k: PaintKit) = PaintResult(arrayOf(far(k), hillside(k), fore(k)))
@@ -50,20 +81,9 @@ class RailwayHillsLandscape : PaintedLandscape() {
         k.fill.color = l.ground(0xFF6A5A44.toInt())
         c.drawRect(-k.margin, ty - h * 0.004f, w + k.margin, ty + h * 0.03f, k.fill)
         k.railTrack(c, -k.margin, w + k.margin, ty)
-        // Telegraph poles with sagging wires.
-        k.line.strokeWidth = 3f * k.unit; k.line.color = l.shade(0xFF3A2C22.toInt())
-        val poles = floatArrayOf(0.1f, 0.4f, 0.7f, 1.0f)
-        for (px in poles) c.drawLine(w * px, ty + h * 0.006f, w * px, ty - h * 0.07f, k.line)
-        k.line.strokeWidth = 1.2f * k.unit; k.line.color = k.alpha(l.shade(0xFF202428.toInt()), 200)
-        for (i in 0 until poles.size - 1) {
-            val a = w * poles[i]; val b = w * poles[i + 1]
-            var prevX = a; var prevY = ty - h * 0.064f
-            for (s in 1..8) {
-                val u = s / 8f
-                val xx = a + (b - a) * u; val yy = ty - h * 0.064f + sin(PI.toFloat() * u) * h * 0.012f
-                c.drawLine(prevX, prevY, xx, yy, k.line); prevX = xx; prevY = yy
-            }
-        }
+        // Overhead line: masts, messenger wire and a contact wire at the height the pantographs reach.
+        // It is measured from the same rail height the trains are drawn at (see drawAnimated).
+        k.overheadLine(c, ty + h * NEAR_RAIL, -k.margin, w + k.margin)
         k.haze(c, h * 0.6f, h * 0.74f, 0.22f)
         return bmp
     }
@@ -82,12 +102,9 @@ class RailwayHillsLandscape : PaintedLandscape() {
     override fun drawAnimated(canvas: Canvas, stage: Int) {
         if (stage != 2) return
         val w = width.toFloat(); val h = height.toFloat()
-        val t = timeMs / 1000f
-        val cycle = 26f
-        val u = (t % cycle) / 15f
-        if (u > 1f) return
         canvas.save(); canvas.translate(shift(0.5f), 0f)
-        train.draw(canvas, -w * 0.75f + u * w * 2.1f, h * TRACK + h * 0.004f, w, h, lighting, 5)
+        // Trains of different kinds come one after another, each crossing the whole screen.
+        train.drawPass(canvas, timeMs / 1000f, h * TRACK + h * NEAR_RAIL, w, h, lighting)
         canvas.restore()
     }
 
@@ -96,11 +113,19 @@ class RailwayHillsLandscape : PaintedLandscape() {
 
 /** A tall stone viaduct over a misty valley with a lit train crossing it, best at night. */
 class TrainViaductLandscape : PaintedLandscape() {
-    override val layers = arrayOf(PaintLayer(0.30f, 0.64f, 0.08f), PaintLayer(0.46f, 0.84f, 0.35f), PaintLayer(0.40f, 0.86f, 0.55f), PaintLayer(0.80f, 1f, 1f))
+    override val layers = arrayOf(PaintLayer(0.30f, 0.64f, 0.08f), PaintLayer(0.46f, 0.80f, 0.35f), PaintLayer(0.36f, 0.80f, 0.55f))
     private val train = TrainRenderer()
 
     override fun build() {}
-    override fun paintAll(k: PaintKit) = PaintResult(arrayOf(peaks(k), valley(k), viaduct(k), fore(k)))
+    override fun paintAll(k: PaintKit) = PaintResult(arrayOf(peaks(k), valley(k), viaduct(k)))
+
+    /** The scene is lowered by [DROP] so the piers end at the bottom edge: nothing is left below the arches. */
+    override fun draw(canvas: Canvas) {
+        canvas.save()
+        canvas.translate(0f, height * DROP)
+        super.draw(canvas)
+        canvas.restore()
+    }
 
     private fun peaks(k: PaintKit): Bitmap? {
         val (c, bmp) = k.newLayer(layers[0]) ?: return null
@@ -117,7 +142,7 @@ class TrainViaductLandscape : PaintedLandscape() {
         val l = k.l; val h = k.h; val w = k.w
         val rnd = Random(222)
         val ridge = Ridge(k.width, h * 0.62f, h * 0.04f, false, 29)
-        k.hill(c, ridge, h * 0.84f, l.distant(l.ground(0xFF3D6B45.toInt()), 0.25f), l.distant(l.ground(0xFF24402A.toInt()), 0.2f), rnd, 0)
+        k.hill(c, ridge, h * 0.80f, l.distant(l.ground(0xFF3D6B45.toInt()), 0.25f), l.distant(l.ground(0xFF24402A.toInt()), 0.2f), rnd, 0)
         val litP = l.distant(l.foliage(0xFF4C8255.toInt()), 0.25f); val darkP = l.distant(l.foliage(0xFF1C3A2A.toInt()), 0.25f); val trunk = l.shade(0xFF3A2C22.toInt())
         var x = -k.margin
         while (x < w + k.margin) {
@@ -137,7 +162,7 @@ class TrainViaductLandscape : PaintedLandscape() {
         val x0 = -w * 0.1f; val x1 = w * 1.1f
         val body = Path()
         body.addRect(x0, deck, x1, foot, Path.Direction.CW)
-        val n = 6; val span = (x1 - x0) / n
+        val n = 4; val span = (x1 - x0) / n
         for (i in 0 until n) {
             val cx = x0 + span * (i + 0.5f)
             val top = deck + h * 0.045f
@@ -161,35 +186,23 @@ class TrainViaductLandscape : PaintedLandscape() {
         c.drawRect(x0, deck - h * 0.006f, x1, deck + h * 0.004f, k.fill)
         k.railTrack(c, x0, x1, deck - h * 0.014f)
         k.fill.color = k.darken(stoneLit, 0.1f)
-        c.drawRect(x0, deck - h * 0.008f, x1, deck, k.fill)
-        // Overhead-line masts.
-        k.line.strokeWidth = 2.5f * k.unit; k.line.color = l.shade(0xFF2E3238.toInt())
-        for (i in 0..8) { val x = x0 + (x1 - x0) * i / 8f; c.drawLine(x, deck - h * 0.012f, x, deck - h * 0.06f, k.line) }
-        c.drawLine(x0, deck - h * 0.055f, x1, deck - h * 0.055f, k.line)
-        return bmp
-    }
-
-    private fun fore(k: PaintKit): Bitmap? {
-        val (c, bmp) = k.newLayer(layers[3]) ?: return null
-        val l = k.l; val h = k.h; val w = k.w
-        val rnd = Random(224)
-        val litP = l.foliage(0xFF3F7A4A.toInt()); val darkP = l.foliage(0xFF183322.toInt()); val trunk = l.shade(0xFF4A3628.toInt())
-        for (s in floatArrayOf(-0.03f, 0.08f, 0.9f, 1.02f)) k.conifer(c, w * s, h * 1.0f, h * (0.24f + 0.06f * rnd.nextFloat()), k.jitter(litP, rnd, 0.14f), darkP, trunk, rnd, 1f)
+        // The parapet stays below the near rail, so both rails show and the wheels can rest on them.
+        c.drawRect(x0, deck - h * 0.004f, x1, deck, k.fill)
+        // Overhead line, measured from the same rail height the trains are drawn at (see drawAnimated).
+        k.overheadLine(c, deck - h * 0.014f + h * NEAR_RAIL, x0, x1)
         return bmp
     }
 
     override fun drawAnimated(canvas: Canvas, stage: Int) {
-        if (stage != 3) return
+        if (stage != layers.size) return
         val w = width.toFloat(); val h = height.toFloat()
-        val t = timeMs / 1000f
-        val u = (t % 24f) / 14f
-        if (u > 1f) return
         canvas.save(); canvas.translate(shift(0.55f), 0f)
-        train.draw(canvas, -w * 0.75f + u * w * 2.1f, h * DECK - h * 0.014f + h * 0.004f, w, h, lighting, 5)
+        // Trains of different kinds come one after another, each crossing the whole screen.
+        train.drawPass(canvas, timeMs / 1000f, h * DECK - h * 0.014f + h * NEAR_RAIL, w, h, lighting)
         canvas.restore()
     }
 
-    private companion object { const val DECK = 0.50f }
+    private companion object { const val DECK = 0.50f; const val DROP = 0.20f }
 }
 
 /** A dirt path through fields and flowers with a cyclist pedalling along it. */
@@ -199,6 +212,35 @@ class CountryCycleLandscape : PaintedLandscape() {
     private val f = Paint(Paint.ANTI_ALIAS_FLAG)
 
     private fun pathY(h: Float, xFrac: Float) = h * 0.735f + h * 0.02f * sin(xFrac * 4.2f + 0.5f)
+
+    private var meadowSpec: com.skymood.wallpaper.fauna.MeadowSpec? = null
+    private var meadowFor = 0
+    override fun meadow(): com.skymood.wallpaper.fauna.MeadowSpec {
+        if (meadowSpec == null || meadowFor != width * 31 + height) {
+            meadowFor = width * 31 + height
+            val h = height.toFloat()
+            meadowSpec = com.skymood.wallpaper.fauna.MeadowSpec(listOf(
+                com.skymood.wallpaper.fauna.FlowerBed(0.02f, 0.98f, com.skymood.wallpaper.fauna.GroundY { _ -> h * 0.78f }, h * 0.1f, 16),
+            ))
+        }
+        return meadowSpec!!
+    }
+
+    private var slots: List<com.skymood.wallpaper.fauna.GroundSlot> = emptyList()
+    private var slotsFor = 0
+    override fun groundSlots(): List<com.skymood.wallpaper.fauna.GroundSlot> {
+        if (slotsFor != width * 31 + height) {
+            slotsFor = width * 31 + height
+            val h = height.toFloat()
+            // A cow and goats graze the meadow in front of the path, and a dog trots about near the verge.
+            slots = listOf(
+                com.skymood.wallpaper.fauna.GroundSlot(com.skymood.wallpaper.fauna.Species.COW, 0.08f, 0.55f, com.skymood.wallpaper.fauna.GroundY { _ -> h * 0.865f }, 1.35f, 1),
+                com.skymood.wallpaper.fauna.GroundSlot(com.skymood.wallpaper.fauna.Species.GOAT, 0.5f, 0.92f, com.skymood.wallpaper.fauna.GroundY { _ -> h * 0.89f }, 1.25f, 2),
+                com.skymood.wallpaper.fauna.GroundSlot(com.skymood.wallpaper.fauna.Species.DOG, 0.1f, 0.9f, com.skymood.wallpaper.fauna.GroundY { _ -> h * 0.81f }, 1.15f, 1),
+            )
+        }
+        return slots
+    }
 
     override fun build() {}
     override fun paintAll(k: PaintKit) = PaintResult(arrayOf(hills(k), fields(k), meadow(k)))

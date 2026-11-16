@@ -32,8 +32,14 @@ class FlowerBed(val x0: Float, val x1: Float, val top: GroundY, val band: Float,
  */
 class Perch(val x: Float, val baseY: Float, val height: Float, val waterY: Float, val scale: Float)
 
-/** What a landscape offers the meadow: places for flowers and, near water, a fishing perch. */
-class MeadowSpec(val beds: List<FlowerBed>, val perch: Perch? = null)
+/** A fire or lamp that moths gather round after dark: its centre [x], [y] and how far they circle, all pixels. */
+class Light(val x: Float, val y: Float, val radius: Float)
+
+/**
+ * What a landscape offers the meadow: places for flowers, a fishing perch near water (dragonflies patrol
+ * there too, and gnats gather), and lights for moths.
+ */
+class MeadowSpec(val beds: List<FlowerBed>, val perch: Perch? = null, val lights: List<Light> = emptyList())
 
 /**
  * Flowers, honey bees, butterflies and a kingfisher, chosen by the weather and the time of day.
@@ -85,6 +91,30 @@ internal class Meadow {
     private val bfVx = FloatArray(MAX_BUT); private val bfTimer = FloatArray(MAX_BUT)
     private val bfT = IntArray(MAX_BUT); private val bfState = IntArray(MAX_BUT)
     private val bfKind = IntArray(MAX_BUT)
+    private val bfGlide = BooleanArray(MAX_BUT)
+
+    // ---- dragonflies patrolling the water: they hover, then dart to a new spot
+    private var dragonCount = 0
+    private val dfX = FloatArray(MAX_DRAGON); private val dfY = FloatArray(MAX_DRAGON)
+    private val dfVx = FloatArray(MAX_DRAGON); private val dfVy = FloatArray(MAX_DRAGON)
+    private val dfTx = FloatArray(MAX_DRAGON); private val dfTy = FloatArray(MAX_DRAGON)
+    private val dfT = FloatArray(MAX_DRAGON); private val dfDir = FloatArray(MAX_DRAGON)
+    private val dfDart = BooleanArray(MAX_DRAGON); private val dfKind = IntArray(MAX_DRAGON)
+    private var pX0 = 0f; private var pX1 = 0f; private var pY0 = 0f; private var pY1 = 0f
+
+    // ---- a swarm of gnats at dusk and dawn
+    private var gnatsOn = false
+    private var swX = 0f; private var swY = 0f
+    private val gnA = FloatArray(MAX_GNAT); private val gnB = FloatArray(MAX_GNAT); private val gnP = FloatArray(MAX_GNAT)
+
+    // ---- moths circling a light
+    private var lights: List<Light> = emptyList()
+    private var mothCount = 0
+    private val mtLight = IntArray(MAX_MOTH); private val mtTh = FloatArray(MAX_MOTH)
+    private val mtW = FloatArray(MAX_MOTH); private val mtR = FloatArray(MAX_MOTH)
+    private val mtRt = FloatArray(MAX_MOTH); private val mtT = FloatArray(MAX_MOTH)
+    private val mtX = FloatArray(MAX_MOTH); private val mtY = FloatArray(MAX_MOTH)
+    private val mtDir = FloatArray(MAX_MOTH)
 
     // ---- kingfisher
     private var perch: Perch? = null
@@ -128,6 +158,7 @@ internal class Meadow {
 
     private fun populate(spec: SceneSpec, mead: MeadowSpec?, warm: Boolean) {
         flowerCount = 0; beeCount = 0; butCount = 0
+        dragonCount = 0; gnatsOn = false; mothCount = 0; lights = emptyList()
         kingOn = false; perch = null
         if (!spec.wildlife || mead == null) return
         val wx = spec.type
@@ -160,7 +191,31 @@ internal class Meadow {
             for (i in 0 until butCount) startButterfly(i)
         }
 
+        val dry = fair || wx == SceneType.OVERCAST
         val pc = mead.perch
+        // Dragonflies hunt over the water by day in warm, calm weather.
+        if (pc != null && warm && dry && calm && !night) {
+            dragonCount = if (tod == TimeOfDay.DAY) 2 else 1
+            pX0 = (pc.x - 0.35f * w).coerceAtLeast(0.04f * w); pX1 = (pc.x + 0.35f * w).coerceAtMost(0.96f * w)
+            pY0 = pc.waterY - 0.1f * h; pY1 = pc.waterY - 0.02f * h
+            for (i in 0 until dragonCount) startDragon(i)
+        }
+        // Gnats dance in a loose cloud at dusk and dawn, over the water or the flowers.
+        if (warm && dry && calm && (tod == TimeOfDay.DAWN || tod == TimeOfDay.DUSK) && (flowerCount > 0 || pc != null)) {
+            gnatsOn = true
+            if (pc != null) {
+                swX = pc.x + (if (pc.x > w * 0.5f) -1f else 1f) * 0.18f * w; swY = pc.waterY - 0.06f * h
+            } else {
+                swX = (regX0 + regX1) / 2f; swY = regTop + (regBottom - regTop) * 0.15f
+            }
+            for (i in 0 until MAX_GNAT) { gnA[i] = 2.5f + rnd.nextFloat() * 3f; gnB[i] = 3f + rnd.nextFloat() * 3f; gnP[i] = rnd.nextFloat() * 6.28f }
+        }
+        // Moths are drawn to fires and lamps once it gets dark.
+        if ((night || tod == TimeOfDay.DUSK) && warm && dry && calm && mead.lights.isNotEmpty()) {
+            lights = mead.lights
+            mothCount = min(MAX_MOTH, 2 * lights.size)
+            for (i in 0 until mothCount) startMoth(i)
+        }
         val kingWeather = fair || wx == SceneType.OVERCAST || wx == SceneType.DRIZZLE
         if (pc != null && !night && kingWeather && calm) {
             perch = pc
@@ -243,6 +298,26 @@ internal class Meadow {
         bfTimer[i] = 3f + rnd.nextFloat() * 6f
         bfKind[i] = rnd.nextInt(BUTTERFLY_COLORS.size)
         bfVx[i] = 0f
+        bfGlide[i] = false
+    }
+
+    private fun startDragon(i: Int) {
+        dfX[i] = pX0 + rnd.nextFloat() * (pX1 - pX0); dfY[i] = pY0 + rnd.nextFloat() * (pY1 - pY0)
+        dfVx[i] = 0f; dfVy[i] = 0f
+        dfDart[i] = false; dfT[i] = 0.3f + rnd.nextFloat() * 1.5f
+        dfDir[i] = if (rnd.nextBoolean()) 1f else -1f
+        dfKind[i] = rnd.nextInt(DRAGON_COLORS.size)
+    }
+
+    private fun startMoth(i: Int) {
+        val l = lights[i % lights.size]
+        mtLight[i] = i % lights.size
+        mtTh[i] = rnd.nextFloat() * 6.28f
+        mtW[i] = (if (rnd.nextBoolean()) 1f else -1f) * (2.5f + rnd.nextFloat() * 3f)
+        mtR[i] = l.radius * (0.4f + rnd.nextFloat() * 0.8f); mtRt[i] = mtR[i]
+        mtT[i] = 0.4f + rnd.nextFloat() * 1.2f
+        mtX[i] = l.x + cos(mtTh[i]) * mtR[i]; mtY[i] = l.y + sin(mtTh[i]) * mtR[i] * 0.75f
+        mtDir[i] = 1f
     }
 
     // ---------------------------------------------------------------- update
@@ -255,6 +330,8 @@ internal class Meadow {
             for (i in 0 until beeCount) updateBee(i, dt)
             for (i in 0 until butCount) updateButterfly(i, dt)
         }
+        for (i in 0 until dragonCount) updateDragon(i, dt)
+        for (i in 0 until mothCount) updateMoth(i, dt)
         if (kingOn) updateKingfisher(dt)
         if (kSplash >= 0f) { kSplash += dt; if (kSplash > 0.9f) kSplash = -1f }
     }
@@ -296,11 +373,14 @@ internal class Meadow {
     private fun updateButterfly(i: Int, dt: Float) {
         when (bfState[i]) {
             0 -> {
-                bfPh[i] += dt * 2f * PI.toFloat() * 5.5f
+                // Flap-flap-glide: now and then the wings are held open in a V and the butterfly sinks a little.
+                val gliding = sin(time * 1.9f + i * 2.3f) > 0.55f
+                bfGlide[i] = gliding
+                if (!gliding) bfPh[i] += dt * 2f * PI.toFloat() * 5.5f
                 bfHead[i] += (sin(time * 1.1f + i * 2.3f) * 1.8f + sin(time * 2.7f + i) * 1.1f) * dt
                 val sp = (38f + 14f * sin(time * 3f + i)) * unit
                 val vx = cos(bfHead[i]) * sp
-                val vy = sin(bfHead[i]) * sp * 0.6f - sin(bfPh[i]) * 14f * unit
+                val vy = sin(bfHead[i]) * sp * 0.6f - (if (gliding) -8f * unit else sin(bfPh[i]) * 14f * unit)
                 bfX[i] += vx * dt; bfY[i] += vy * dt
                 bfVx[i] = vx
                 if (bfX[i] < regX0 || bfX[i] > regX1 || bfY[i] < regTop || bfY[i] > regBottom) {
@@ -311,6 +391,7 @@ internal class Meadow {
                 if (bfTimer[i] <= 0f) { bfState[i] = 1; bfT[i] = rnd.nextInt(flowerCount); bfTimer[i] = 7f }
             }
             1 -> {
+                bfGlide[i] = false
                 bfPh[i] += dt * 2f * PI.toFloat() * 6f
                 val dx = headX(bfT[i]) - bfX[i]; val dy = headY(bfT[i]) - 3f * unit - bfY[i]
                 val dist = sqrt(dx * dx + dy * dy).coerceAtLeast(0.01f)
@@ -324,6 +405,7 @@ internal class Meadow {
                 else if (bfTimer[i] <= 0f) { bfState[i] = 0; bfTimer[i] = 4f + rnd.nextFloat() * 4f }
             }
             else -> {
+                bfGlide[i] = false
                 bfPh[i] += dt * 2.2f
                 bfX[i] = headX(bfT[i]); bfY[i] = headY(bfT[i]) - 3f * unit
                 bfVx[i] = 0f
@@ -331,6 +413,51 @@ internal class Meadow {
                 if (bfTimer[i] <= 0f) { bfState[i] = 0; bfTimer[i] = 5f + rnd.nextFloat() * 7f; bfHead[i] = -1.2f }
             }
         }
+    }
+
+    /** A dragonfly hovers on the spot, then darts to a new place over the water and stops dead. */
+    private fun updateDragon(i: Int, dt: Float) {
+        dfT[i] -= dt
+        if (dfDart[i]) {
+            val dx = dfTx[i] - dfX[i]; val dy = dfTy[i] - dfY[i]
+            val dist = sqrt(dx * dx + dy * dy).coerceAtLeast(0.01f)
+            val sp = min(270f * unit, dist * 7f + 30f * unit)
+            val k = min(1f, 9f * dt)
+            dfVx[i] += (dx / dist * sp - dfVx[i]) * k
+            dfVy[i] += (dy / dist * sp - dfVy[i]) * k
+            dfX[i] += dfVx[i] * dt; dfY[i] += dfVy[i] * dt
+            if (abs(dfVx[i]) > 12f * unit) dfDir[i] = if (dfVx[i] > 0f) 1f else -1f
+            if (dist < 7f * unit) { dfDart[i] = false; dfT[i] = 0.5f + rnd.nextFloat() * 1.7f }
+        } else {
+            val k = min(1f, 8f * dt)
+            dfVx[i] -= dfVx[i] * k; dfVy[i] -= dfVy[i] * k
+            dfX[i] += dfVx[i] * dt + sin(time * 17f + i * 2f) * 14f * unit * dt
+            dfY[i] += dfVy[i] * dt + sin(time * 13f + i) * 12f * unit * dt
+            if (dfT[i] <= 0f) {
+                // Choose somewhere at least a fifth of the screen away, so each dart is worth the trip.
+                var tx = pX0 + rnd.nextFloat() * (pX1 - pX0)
+                if (abs(tx - dfX[i]) < 0.2f * w) tx = if (dfX[i] < (pX0 + pX1) / 2f) pX1 - rnd.nextFloat() * 0.1f * w else pX0 + rnd.nextFloat() * 0.1f * w
+                dfTx[i] = tx; dfTy[i] = pY0 + rnd.nextFloat() * (pY1 - pY0)
+                dfDart[i] = true
+            }
+        }
+    }
+
+    /** A moth circles its light in loops that wander in and out, reversing now and then. */
+    private fun updateMoth(i: Int, dt: Float) {
+        val l = lights[mtLight[i]]
+        mtT[i] -= dt
+        if (mtT[i] <= 0f) {
+            mtT[i] = 0.3f + rnd.nextFloat() * 1.3f
+            mtW[i] = (if (rnd.nextBoolean()) 1f else -1f) * (2f + rnd.nextFloat() * 4.5f)
+            mtRt[i] = l.radius * (0.25f + rnd.nextFloat() * 1.15f)
+        }
+        mtR[i] += (mtRt[i] - mtR[i]) * min(1f, 3f * dt)
+        mtTh[i] += mtW[i] * dt
+        val nx = l.x + cos(mtTh[i]) * mtR[i]
+        val ny = l.y + sin(mtTh[i]) * mtR[i] * 0.75f + sin(time * 11f + i * 2f) * 3f * unit
+        if (abs(nx - mtX[i]) > 0.01f) mtDir[i] = if (nx > mtX[i]) 1f else -1f
+        mtX[i] = nx; mtY[i] = ny
     }
 
     private fun angleDiff(from: Float, to: Float): Float {
@@ -474,9 +601,85 @@ internal class Meadow {
     fun drawFlyers(canvas: Canvas) {
         if (w <= 0f) return
         val shift = parallaxPx * 0.9f
+        if (gnatsOn) drawGnats(canvas, shift)
         for (i in 0 until beeCount) drawBee(canvas, i, shift)
         for (i in 0 until butCount) drawButterfly(canvas, i, shift)
+        for (i in 0 until dragonCount) drawDragon(canvas, i, shift)
+        for (i in 0 until mothCount) drawMoth(canvas, i, shift)
         if (kingOn) drawKingfisher(canvas)
+    }
+
+    /** A cloud of tiny dark specks, each on its own looping path, the cloud drifting slowly. */
+    private fun drawGnats(canvas: Canvas, shift: Float) {
+        val cx = swX + sin(time * 0.18f) * 0.04f * w + shift
+        val cy = swY + cos(time * 0.14f) * 0.015f * h
+        val r = 0.045f * w
+        paint.style = Paint.Style.FILL
+        paint.color = mul(0xD0202428.toInt(), tint)
+        for (i in 0 until MAX_GNAT) {
+            val x = cx + sin(time * gnA[i] + gnP[i]) * r * (0.65f + 0.35f * sin(time * 0.8f + gnP[i] * 3f))
+            val y = cy + sin(time * gnB[i] + gnP[i] * 1.7f) * r * 0.55f
+            canvas.drawCircle(x, y, 1.3f * unit, paint)
+        }
+    }
+
+    /** A slim jewelled body with four glassy wings that blur when it moves and shimmer when it hovers. */
+    private fun drawDragon(canvas: Canvas, i: Int, shift: Float) {
+        val u = unit * 2f
+        val col = DRAGON_COLORS[dfKind[i]]
+        val wf = 0.45f + 0.55f * abs(sin(time * 55f + i * 1.7f))
+        canvas.save()
+        canvas.translate(dfX[i] + shift, dfY[i])
+        canvas.scale(dfDir[i], 1f)
+        // Dart with the head a little down; hover with the tail a little down.
+        canvas.rotate(if (dfDart[i]) 6f else -4f)
+        paint.style = Paint.Style.FILL
+        // Far wings first, then the body, then the near wings.
+        paint.color = mul(0x66D6E8F8, tint)
+        for (p in 0..1) {
+            canvas.save(); canvas.translate((3.5f - p * 3f) * u, -0.9f * u); canvas.rotate(-62f - p * 22f)
+            canvas.drawOval(0f, -1.3f * u * wf - 0.3f * u, 10.5f * u, 0.2f * u, paint)
+            canvas.restore()
+        }
+        paint.color = mul(col[0], tint)
+        canvas.drawOval(-17.5f * u, -0.85f * u, 2f * u, 0.85f * u, paint)
+        paint.color = mul(col[1], tint)
+        canvas.drawOval(-12f * u, -0.95f * u, -10f * u, 0.95f * u, paint)
+        canvas.drawOval(-7f * u, -0.95f * u, -5f * u, 0.95f * u, paint)
+        canvas.drawOval(1f * u, -2.2f * u, 6.4f * u, 2.2f * u, paint)
+        paint.color = mul(col[2], tint)
+        canvas.drawCircle(7.2f * u, -0.4f * u, 2.1f * u, paint)
+        paint.color = mul(0xFF14181C.toInt(), tint)
+        canvas.drawCircle(8.2f * u, -0.9f * u, 0.7f * u, paint)
+        paint.color = mul(0x77DCEBFA, tint)
+        for (p in 0..1) {
+            canvas.save(); canvas.translate((4.2f - p * 3.4f) * u, -1.5f * u); canvas.rotate(-48f - p * 26f)
+            canvas.drawOval(0f, -1.4f * u * wf - 0.3f * u, 11f * u, 0.2f * u, paint)
+            canvas.restore()
+        }
+        canvas.restore()
+    }
+
+    /** A pale moth whose wings sweep up and down quickly as it loops round its light. */
+    private fun drawMoth(canvas: Canvas, i: Int, shift: Float) {
+        val u = unit * 1.7f
+        val ang = -15f + 80f * abs(sin(time * 26f + i * 1.3f))
+        canvas.save()
+        canvas.translate(mtX[i] + shift, mtY[i])
+        canvas.scale(mtDir[i], 1f)
+        paint.style = Paint.Style.FILL
+        paint.color = mul(0xCCC9BFA8.toInt(), tint)
+        canvas.save(); canvas.translate(0.8f * u, -0.9f * u); canvas.rotate(ang * 0.8f)
+        canvas.drawOval(-7f * u, -2.3f * u, 0.5f * u, 0.4f * u, paint)
+        canvas.restore()
+        paint.color = mul(0xFF5A4C3A.toInt(), tint)
+        canvas.drawOval(-3.2f * u, -1.1f * u, 3.2f * u, 1.1f * u, paint)
+        canvas.drawCircle(3.6f * u, -0.2f * u, 1.1f * u, paint)
+        paint.color = mul(0xFFE6DDC8.toInt(), tint)
+        canvas.save(); canvas.translate(0.8f * u, -0.9f * u); canvas.rotate(ang)
+        canvas.drawOval(-7.5f * u, -2.6f * u, 0.5f * u, 0.4f * u, paint)
+        canvas.restore()
+        canvas.restore()
     }
 
     private fun drawBee(canvas: Canvas, i: Int, shift: Float) {
@@ -505,6 +708,7 @@ internal class Meadow {
         val u = unit * 2.2f
         val colors = BUTTERFLY_COLORS[bfKind[i]]
         val flap = if (bfState[i] == 2) 0.3f + 0.7f * (0.5f + 0.5f * sin(bfPh[i]))
+        else if (bfGlide[i]) 0.7f
         else 0.2f + 0.8f * abs(cos(bfPh[i]))
         val tilt = (bfVx[i] / (50f * unit)).coerceIn(-1f, 1f) * 16f
         canvas.save()
@@ -613,6 +817,9 @@ internal class Meadow {
         const val MAX_FLOWERS = 48
         const val MAX_BEE = 4
         const val MAX_BUT = 4
+        const val MAX_DRAGON = 3
+        const val MAX_GNAT = 18
+        const val MAX_MOTH = 4
         const val MIN_INSECT_C = 12.0
         const val CALM_KMH = 25f
 
@@ -622,6 +829,13 @@ internal class Meadow {
         const val K_PLUNGE = 3
         const val K_UNDER = 4
         const val K_BACK = 5
+
+        /** Abdomen, thorax and eye colour of each dragonfly: a blue darter, an emerald and a red darter. */
+        val DRAGON_COLORS = arrayOf(
+            intArrayOf(0xFF2E86C1.toInt(), 0xFF1B4F72.toInt(), 0xFF5DADE2.toInt()),
+            intArrayOf(0xFF2FAE74.toInt(), 0xFF145A32.toInt(), 0xFF58D68D.toInt()),
+            intArrayOf(0xFFC0392B.toInt(), 0xFF7B241C.toInt(), 0xFFE67E22.toInt()),
+        )
 
         /** Wing colour, edge colour and spot colour of each butterfly. */
         val BUTTERFLY_COLORS = arrayOf(

@@ -59,7 +59,7 @@ class PaintKit(val width: Int, val height: Int, val l: Lighting) {
     private var markCanvas: Canvas? = null
     private var curMarks: ArrayList<TreeMark>? = null
 
-    private fun markTree(c: Canvas, x: Float, baseY: Float, th: Float, halfWidth: Float, stiffness: Float) {
+    internal fun markTree(c: Canvas, x: Float, baseY: Float, th: Float, halfWidth: Float, stiffness: Float) {
         if (c === markCanvas) curMarks?.add(TreeMark(x, baseY, th, halfWidth, stiffness))
     }
     fun newLayer(layer: PaintLayer): Pair<Canvas, Bitmap>? {
