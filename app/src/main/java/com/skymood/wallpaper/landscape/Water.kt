@@ -13,7 +13,7 @@ import kotlin.random.Random
  * horizon, drifting glints, wave lines that grow with the wind, and a shimmering sun or moon
  * reflection when the sky is clear enough.
  */
-class Water(private val maxGlints: Int = 70) {
+class Water(private val maxGlints: Int = 70, private val drawReflection: Boolean = true) {
 
     private val bodyPaint = Paint()
     private val glintPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { strokeCap = Paint.Cap.ROUND }
@@ -87,7 +87,7 @@ class Water(private val maxGlints: Int = 70) {
         glintPaint.alpha = (90 + windKmh * 2f).toInt().coerceIn(60, 170)
         if (n > 0) canvas.drawLines(lines, 0, n, glintPaint)
 
-        if (reflection != 0) {
+        if (reflection != 0 && drawReflection) {
             var m = 0
             val h = bottom - top
             for (r in 0 until REFLECT_ROWS) {

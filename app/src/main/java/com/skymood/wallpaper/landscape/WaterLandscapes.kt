@@ -27,18 +27,23 @@ import kotlin.random.Random
 
 private const val DEEP_SEA = 0xFF123E5C.toInt()
 private const val DEEP_LAKE = 0xFF173F4A.toInt()
+private const val BEACH_FAR = 0xFF1A5F8E.toInt()
+private const val BEACH_MID = 0xFF1B88A6.toInt()
+private const val BEACH_SHALLOW = 0xFF58CDBF.toInt()
 
 private fun stroke() = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND }
 private fun fillPaint() = Paint(Paint.ANTI_ALIAS_FLAG)
 
 /** Where the sand meets the sea, shared by the painted sand and the animated foam. */
-private fun shoreEdge(x: Float, w: Float, h: Float): Float =
+internal fun shoreEdge(x: Float, w: Float, h: Float): Float =
     h * 0.83f + h * 0.012f * sin(x / w * 3.2f + 0.6f) + h * 0.014f * (x / w)
 
 /** Sea washing onto a painted sandy beach with a leafy headland, wet sand, foam and a palm tree. */
 /** Sea washing onto a painted sandy beach with a leafy headland, wet sand, foam, palms, speed boat, relax chairs, umbrella and beachgoers. */
 class BeachLandscape : PaintedLandscape() {
-    override val layers = arrayOf(PaintLayer(0.5f, 0.68f, 0.1f), PaintLayer(0.78f, 1f, 1f))
+    // Headland, then the sand, then the things standing on it. The swash runs up the sand between the
+    // last two (see drawAnimated), so it washes over the beach but never over the props.
+    override val layers = arrayOf(PaintLayer(0.5f, 0.68f, 0.1f), PaintLayer(0.78f, 1f, 1f), PaintLayer(0.78f, 1f, 1f))
 
     private var slots: List<GroundSlot> = emptyList()
     private var slotsFor = 0
@@ -57,57 +62,154 @@ class BeachLandscape : PaintedLandscape() {
         )
     }
 
-    private val water = Water()
-    private val foamLines = FloatArray(FOAM_SEGMENTS * 4)
+    private val water = Water(drawReflection = false)
+    private val surf = BeachSurf()
+    private val wakes = BoatStyle.FLEET.associateWith { BoatWake(it) }
     private val foamPaint = stroke()
     private val spritePaint = Paint(Paint.FILTER_BITMAP_FLAG)
     override fun build() {
         val w = width.toFloat(); val h = height.toFloat(); val unit = w / 1080f
         water.build(-w * 0.1f, w * 1.1f, h * 0.66f, h * 0.86f, unit)
+        surf.build(w, h, unit, h * 0.66f)
         foamPaint.strokeWidth = 3f * unit.coerceAtLeast(0.6f)
     }
 
     override fun onLightingChanged() {
-        water.applyLighting(lighting, DEEP_SEA, width)
+        // Open sea is a deep blue that clears through teal to turquoise over the sand.
+        water.applyLighting(lighting, BEACH_MID, width, shallow = BEACH_SHALLOW, horizon = BEACH_FAR)
+        surf.applyLighting(lighting)
+        for (wk in wakes.values) wk.applyLighting(lighting)
         foamPaint.color = lighting.shade(0xFFFFFFFF.toInt())
     }
 
     override fun paintAll(k: PaintKit): PaintResult {
         val palm = palm(k)
-        val boat = speedBoat(k)
         val sp = HashMap<String, Bitmap>()
         if (palm != null) sp["palm"] = palm
-        if (boat != null) sp["boat"] = boat
-        return PaintResult(arrayOf(headland(k), sand(k)), sp)
+        // The boats on the sea: a different kind on each row, each with its own speed and wake.
+        k.paintSpeedBoat()?.let { sp[BoatStyle.RUNABOUT.key] = it }
+        k.paintJetSki()?.let { sp[BoatStyle.JETSKI.key] = it }
+        k.paintRacer()?.let { sp[BoatStyle.RACER.key] = it }
+        k.paintRib()?.let { sp[BoatStyle.RIB.key] = it }
+        k.paintCruiser()?.let { sp[BoatStyle.CRUISER.key] = it }
+        k.paintSailboat()?.let { sp["sail"] = it }
+        return PaintResult(arrayOf(headland(k), sand(k), props(k)), sp)
     }
 
     private fun headland(k: PaintKit): Bitmap? {
         val (c, bmp) = k.newLayer(layers[0]) ?: return null
-        val l = k.l; val h = k.h; val w = k.w
+        val l = k.l; val h = k.h; val w = k.w; val u = k.unit.coerceAtLeast(0.6f)
         val rnd = Random(61)
         val horizon = h * 0.66f
-        val n = 60
+
+        // A faint, low island far out to the right, so the sea has depth.
+        farIsland(c, k, w * 0.6f, w * 0.97f, h * 0.014f, rnd)
+
+        // The headland: a rounded wooded hill that drops steeply to rocks on the sea side.
+        val n = 80
+        val x0 = -w * 0.1f; val span = w * 0.52f
         val xs = FloatArray(n + 1); val ys = FloatArray(n + 1)
         for (i in 0..n) {
-            val u = i / n.toFloat()
-            xs[i] = -w * 0.1f + u * w * 0.5f
-            ys[i] = horizon - h * 0.045f * sin(PI.toFloat() * u).pow(1.3f) * (0.85f + 0.15f * sin(u * 17f))
+            val t = i / n.toFloat()
+            // sin(pi) comes out a hair below zero in floats, and pow() of that is NaN, which would drop the path.
+            val hill = sin(PI.toFloat() * t.pow(0.85f)).coerceAtLeast(0f).pow(1.15f)
+            val lumps = 0.88f + 0.08f * sin(t * 13f + 1f) + 0.06f * sin(t * 31f)
+            xs[i] = x0 + t * span
+            ys[i] = horizon - h * 0.05f * hill * lumps
         }
         val body = Path()
         body.moveTo(xs[0], horizon + 2f)
         for (i in 0..n) body.lineTo(xs[i], ys[i])
         body.lineTo(xs[n], horizon + 2f)
         body.close()
-        k.shader = LinearGradient(0f, horizon - h * 0.05f, 0f, horizon, l.distant(l.foliage(0xFF4F7A55.toInt()), 0.45f), l.distant(l.ground(0xFF8A8478.toInt()), 0.5f), Shader.TileMode.CLAMP)
+        // Far hills fade into the sky, but this one is close enough to keep its colour and form.
+        val lit = l.distant(l.foliage(0xFF5C9A5A.toInt()), 0.18f); val dark = l.distant(l.foliage(0xFF24492F.toInt()), 0.18f)
+        val rock = l.distant(l.ground(0xFF7A756A.toInt()), 0.25f)
+        val trunk = l.distant(l.shade(0xFF5A4632.toInt()), 0.2f)
+        k.shader = LinearGradient(0f, horizon - h * 0.055f, 0f, horizon, k.mix(lit, dark, 0.35f), k.mix(dark, rock, 0.5f), Shader.TileMode.CLAMP)
         c.drawPath(body, k.fill)
         k.shader = null
-        val lit = l.distant(l.foliage(0xFF5F9A5E.toInt()), 0.4f); val dark = l.distant(l.foliage(0xFF2F5A3C.toInt()), 0.4f)
-        for (i in 2 until n - 2 step 3) {
-            val th = h * (0.018f + rnd.nextFloat() * 0.018f)
-            drawMiniPalm(c, k, xs[i], ys[i] + th * 0.15f, th, lit, dark, rnd)
+
+        c.save()
+        c.clipPath(body)
+        // Leafy texture: a scatter of dabs, lighter near the crest and darker lower down.
+        repeat((650 * u).toInt()) {
+            val x = x0 + rnd.nextFloat() * span
+            val i = (((x - x0) / span) * n).toInt().coerceIn(0, n)
+            val top = ys[i]
+            val y = top + (horizon - top) * rnd.nextFloat().pow(1.4f)
+            val f = (y - top) / (horizon - top + 1f)
+            k.fill.color = k.jitter(k.mix(lit, dark, (f * 0.8f + rnd.nextFloat() * 0.4f).coerceIn(0f, 1f)), rnd, 0.1f)
+            c.drawCircle(x, y, (1.2f + rnd.nextFloat() * 2.8f) * u, k.fill)
         }
-        k.haze(c, h * 0.58f, h * 0.68f, 0.45f)
+        // Light on the sun's side of the hill, shade on the other.
+        k.shader = LinearGradient(
+            x0, 0f, x0 + span, 0f,
+            if (k.sunOnLeft) k.alpha(Color.WHITE, 38) else k.alpha(Color.BLACK, 46),
+            if (k.sunOnLeft) k.alpha(Color.BLACK, 46) else k.alpha(Color.WHITE, 38),
+            Shader.TileMode.CLAMP,
+        )
+        c.drawRect(x0, horizon - h * 0.06f, x0 + span, horizon + 2f, k.fill)
+        // Bare rock where the hill meets the water.
+        k.shader = LinearGradient(0f, horizon - h * 0.012f, 0f, horizon, k.alpha(rock, 0), k.alpha(rock, 200), Shader.TileMode.CLAMP)
+        c.drawRect(x0, horizon - h * 0.012f, x0 + span, horizon + 2f, k.fill)
+        k.shader = null
+        c.restore()
+
+        // Palms in clumps of two to four, some low on the slope, the rest along the crest; lowest first.
+        class Tree(val x: Float, val base: Float, val th: Float)
+        val trees = ArrayList<Tree>()
+        for (cx in floatArrayOf(0.1f, 0.24f, 0.39f, 0.53f, 0.68f, 0.82f)) {
+            repeat(2 + rnd.nextInt(3)) {
+                val t = (cx + (rnd.nextFloat() - 0.5f) * 0.08f).coerceIn(0.03f, 0.95f)
+                val i = (t * n).toInt().coerceIn(0, n)
+                val depth = if (rnd.nextFloat() < 0.35f) rnd.nextFloat() * 0.55f else 0f
+                val th = h * (0.010f + rnd.nextFloat() * 0.018f) * (1f - 0.35f * depth)
+                trees.add(Tree(xs[i], ys[i] + (horizon - ys[i]) * depth + th * 0.15f, th))
+            }
+        }
+        trees.sortBy { it.base }
+        for (tr in trees) drawMiniPalm(c, k, tr.x, tr.base, tr.th, lit, dark, rnd, trunk)
+        // Low scrub between the palms.
+        repeat(16) {
+            val i = (n * (0.04f + 0.9f * rnd.nextFloat())).toInt().coerceIn(0, n)
+            val r = h * (0.004f + 0.006f * rnd.nextFloat())
+            k.fill.color = k.jitter(k.mix(lit, dark, 0.25f + 0.5f * rnd.nextFloat()), rnd, 0.1f)
+            c.drawCircle(xs[i], ys[i] + r * 0.4f, r, k.fill)
+        }
+        // Boulders at the foot, and a small sea stack off the point.
+        for (i in 0 until 5) {
+            val bx = xs[n] - w * 0.02f + w * 0.03f * i * 0.6f + rnd.nextFloat() * w * 0.01f
+            k.rock(c, bx, horizon + 1f, w * (0.004f + 0.006f * rnd.nextFloat()), rock, rnd)
+        }
+        k.rock(c, xs[n] + w * 0.04f, horizon + 1f, w * 0.009f, rock, rnd)
+        k.rock(c, xs[(n * 0.06f).toInt()], horizon + 1f, w * 0.007f, rock, rnd)
+        k.haze(c, h * 0.6f, h * 0.675f, 0.22f)
         return bmp
+    }
+
+    /** A low, hazy island on the horizon with a fringe of tiny palms. */
+    private fun farIsland(c: Canvas, k: PaintKit, x0: Float, x1: Float, height: Float, rnd: Random) {
+        val l = k.l
+        val horizon = k.h * 0.66f
+        val n = 30
+        val ys = FloatArray(n + 1)
+        val body = Path()
+        body.moveTo(x0, horizon + 2f)
+        for (i in 0..n) {
+            val t = i / n.toFloat()
+            ys[i] = horizon - height * sin(PI.toFloat() * t).coerceAtLeast(0f).pow(0.8f) * (0.8f + 0.2f * sin(t * 23f))
+            body.lineTo(x0 + (x1 - x0) * t, ys[i])
+        }
+        body.lineTo(x1, horizon + 2f)
+        body.close()
+        k.fill.color = l.distant(l.foliage(0xFF3F7352.toInt()), 0.4f)
+        c.drawPath(body, k.fill)
+        val lit = l.distant(l.foliage(0xFF4E8F50.toInt()), 0.36f); val dark = l.distant(l.foliage(0xFF265034.toInt()), 0.36f)
+        for (i in 4 until n - 3 step 2) {
+            val th = height * (0.7f + 0.5f * rnd.nextFloat())
+            drawMiniPalm(c, k, x0 + (x1 - x0) * i / n, ys[i] + th * 0.15f, th, lit, dark, rnd, lit)
+        }
     }
 
     private fun sand(k: PaintKit): Bitmap? {
@@ -127,20 +229,12 @@ class BeachLandscape : PaintedLandscape() {
         k.shader = LinearGradient(0f, h * 0.82f, 0f, h, l.ground(0xFFD8BE88.toInt()), dry, Shader.TileMode.CLAMP)
         c.drawPath(body, k.fill)
         k.shader = null
-        // Wet sand: dark and glossy at the waterline, fading into dry sand.
         c.save()
         c.clipPath(body)
-        k.shader = LinearGradient(0f, h * 0.82f, 0f, h * 0.9f, l.ground(0xFF8C7650.toInt()), k.alpha(l.ground(0xFFB59B6E.toInt()), 0), Shader.TileMode.CLAMP)
-        c.drawRect(-k.margin, h * 0.8f, w + k.margin, h * 0.92f, k.fill)
-        k.shader = null
-        // Ripples in the sand.
-        k.line.strokeWidth = 1.5f * k.unit
-        repeat(90) {
-            val x = rnd.nextFloat() * w
-            val y = shoreEdge(x, w, h) + h * (0.03f + rnd.nextFloat() * 0.14f)
-            k.line.color = k.alpha(if (rnd.nextBoolean()) Color.BLACK else Color.WHITE, 22)
-            c.drawLine(x, y, x + w * (0.04f + rnd.nextFloat() * 0.08f), y + h * 0.002f, k.line)
-        }
+        k.beachTone(c, rnd, dry)
+        // Wet sand: dark and glossy at the waterline, following the shore, fading into dry sand.
+        k.beachWetSand(c)
+        k.beachRipples(c)
         // Grains.
         repeat((2600 * k.unit).toInt()) {
             val x = -k.margin + rnd.nextFloat() * (w + k.margin * 2)
@@ -156,458 +250,94 @@ class BeachLandscape : PaintedLandscape() {
             k.rock(c, x, shoreEdge(x, w, h) + h * (0.05f + 0.1f * rnd.nextFloat()), w * (0.008f + 0.012f * rnd.nextFloat()), l.ground(0xFF9C9486.toInt()), rnd)
         }
         k.rock(c, w * 0.08f, h * 0.96f, w * 0.05f, l.ground(0xFF8A8478.toInt()), rnd)
-
-        // --- Sea Beach Elements: Sandcastle, Relax Chairs, Umbrella, People, Towel, Beach Ball, Coconut & Surfboard ---
-        val u = k.unit
-
-        // Sandcastle on wet sand edge near waterline
-        val scx = w * 0.17f
-        val scy = shoreEdge(scx, w, h) + 20f * u
-        val scColor = l.ground(0xFFD4B483.toInt())
-        val scDark = k.darken(scColor, 0.25f)
-        k.fill.color = scColor
-        c.drawRect(scx - 24f * u, scy - 20f * u, scx + 24f * u, scy, k.fill)
-        c.drawRect(scx - 26f * u, scy - 32f * u, scx - 13f * u, scy - 20f * u, k.fill)
-        c.drawRect(scx - 6f * u, scy - 36f * u, scx + 6f * u, scy - 20f * u, k.fill)
-        c.drawRect(scx + 13f * u, scy - 32f * u, scx + 26f * u, scy - 20f * u, k.fill)
-        k.fill.color = scDark
-        c.drawRect(scx - 4f * u, scy - 12f * u, scx + 4f * u, scy, k.fill)
-        k.line.strokeWidth = 1.2f * u; k.line.color = l.shade(0xFF333333.toInt())
-        c.drawLine(scx, scy - 36f * u, scx, scy - 50f * u, k.line)
-        k.fill.color = l.shade(0xFFEE5253.toInt())
-        val flag = Path()
-        flag.moveTo(scx, scy - 50f * u)
-        flag.lineTo(scx + 10f * u, scy - 45f * u)
-        flag.lineTo(scx, scy - 40f * u)
-        flag.close()
-        c.drawPath(flag, k.fill)
-
-        // Beach Umbrella & Relax Chairs Position
-        val ux = w * 0.33f
-        val uy = h * 0.865f
-
-        // Relax Chair 1 (Left Chair with sunbathing person)
-        val c1x = w * 0.27f
-        val c1y = uy + 55f * u
-        drawRelaxChair(c, k, c1x, c1y, 60f * u, 28f * u,
-            frameCol = l.ground(0xFFF5F5F5.toInt()),
-            fabricCol = l.shade(0xFF00A896.toInt()),
-            personSwimsuit = l.shade(0xFFEE5253.toInt()),
-            hasPersonSunbathing = true
-        )
-
-        // Relax Chair 2 (Right Chair with sitting person drinking coconut)
-        val c2x = w * 0.39f
-        val c2y = uy + 58f * u
-        drawRelaxChair(c, k, c2x, c2y, 60f * u, 28f * u,
-            frameCol = l.ground(0xFFF5F5F5.toInt()),
-            fabricCol = l.shade(0xFFFF6B6B.toInt()),
-            personSwimsuit = l.shade(0xFF00D2D3.toInt()),
-            hasPersonSitting = true
-        )
-
-        // Beach Umbrella (Canopy over chairs & pole on sand)
-        drawBeachUmbrella(c, k, ux, uy)
-
-        // Side Table & Coconut Drink
-        val tx = w * 0.33f
-        val ty = uy + 70f * u
-        k.fill.color = l.shade(0xFF8D6E63.toInt())
-        c.drawRect(tx - 13f * u, ty - 8f * u, tx + 13f * u, ty, k.fill)
-        k.fill.color = l.shade(0xFF4E342E.toInt())
-        c.drawCircle(tx, ty - 13f * u, 7f * u, k.fill)
-        k.line.strokeWidth = 1.2f * u; k.line.color = l.shade(0xFFEE5253.toInt())
-        c.drawLine(tx, ty - 13f * u, tx + 4f * u, ty - 22f * u, k.line)
-
-        // Beach Towel & Beach Ball
-        val towelX = w * 0.49f
-        val towelY = uy + 75f * u
-        val towelW = 75f * u
-        val towelH = 28f * u
-        c.save()
-        c.rotate(-10f, towelX, towelY)
-        k.fill.color = l.shade(0xFFFF9F43.toInt())
-        c.drawRect(towelX - towelW / 2, towelY - towelH / 2, towelX + towelW / 2, towelY + towelH / 2, k.fill)
-        k.fill.color = l.shade(0xFFFFFFFF.toInt())
-        c.drawRect(towelX - towelW * 0.3f, towelY - towelH / 2, towelX - towelW * 0.1f, towelY + towelH / 2, k.fill)
-        c.drawRect(towelX + towelW * 0.1f, towelY - towelH / 2, towelX + towelW * 0.3f, towelY + towelH / 2, k.fill)
-        c.restore()
-
-        val ballX = w * 0.55f
-        val ballY = uy + 80f * u
-        val ballR = 15f * u
-        k.fill.color = k.alpha(Color.BLACK, 40)
-        c.drawOval(ballX - ballR, ballY + ballR * 0.6f, ballX + ballR, ballY + ballR * 1.1f, k.fill)
-        k.fill.color = l.shade(0xFFEE5253.toInt())
-        c.drawCircle(ballX, ballY, ballR, k.fill)
-        k.fill.color = l.shade(0xFF54A0FF.toInt())
-        c.drawArc(ballX - ballR, ballY - ballR, ballX + ballR, ballY + ballR, 0f, 120f, true, k.fill)
-        k.fill.color = l.shade(0xFFFECA57.toInt())
-        c.drawArc(ballX - ballR, ballY - ballR, ballX + ballR, ballY + ballR, 120f, 120f, true, k.fill)
-        k.fill.color = k.alpha(Color.WHITE, 180)
-        c.drawCircle(ballX - ballR * 0.3f, ballY - ballR * 0.3f, ballR * 0.3f, k.fill)
-
-        // Walking person on shoreline
-        val p3x = w * 0.58f
-        val p3y = shoreEdge(p3x, w, h) + 30f * u
-        drawWalkingPerson(c, k, p3x, p3y)
-
-        // Surfboard propped up near palms
-        val sfx = w * 0.72f
-        val sfy = uy + 50f * u
-        drawSurfboard(c, k, sfx, sfy)
-
+        // Seaweed line, shells, footprints, driftwood and dune grass (under the props below).
+        k.beachDebris(c, rnd)
         return bmp
     }
 
-    /** A sleek speed boat: angled V-hull, sport stripe, windshield, driver and motor. */
-    private fun speedBoat(k: PaintKit): Bitmap? {
-        val s = k.w * 0.00095f
-        val bw = (240 * s).toInt().coerceAtLeast(36)
-        val bh = (100 * s).toInt().coerceAtLeast(24)
-        val (c, bmp) = k.newSprite(bw, bh) ?: return null
-        val l = k.l
-        val ox = bw / 2f; val oy = bh * 0.75f
-        fun px(x: Float) = ox + x * s
-        fun py(y: Float) = oy + y * s
-
-        k.fill.color = k.alpha(Color.BLACK, 40)
-        c.drawOval(px(-100f), py(-2f), px(100f), py(14f), k.fill)
-
-        val hull = Path()
-        hull.moveTo(px(-95f), py(-18f))
-        hull.lineTo(px(70f), py(-20f))
-        hull.quadTo(px(105f), py(-10f), px(115f), py(-2f))
-        hull.lineTo(px(75f), py(10f))
-        hull.lineTo(px(-90f), py(10f))
-        hull.close()
-
-        val whiteHull = l.shade(0xFFF0F4F8.toInt())
-        val redStripe = l.shade(0xFFD9381E.toInt())
-        val darkTrim = l.shade(0xFF2C3E50.toInt())
-
-        k.shader = LinearGradient(0f, py(-20f), 0f, py(10f), k.lighten(whiteHull, 0.15f), k.darken(whiteHull, 0.25f), Shader.TileMode.CLAMP)
-        c.drawPath(hull, k.fill)
-        k.shader = null
-
-        val stripe = Path()
-        stripe.moveTo(px(-92f), py(-6f))
-        stripe.lineTo(px(75f), py(-7f))
-        stripe.lineTo(px(102f), py(-3f))
-        stripe.lineTo(px(70f), py(2f))
-        stripe.lineTo(px(-90f), py(2f))
-        stripe.close()
-        k.fill.color = redStripe
-        c.drawPath(stripe, k.fill)
-
-        k.fill.color = darkTrim
-        c.drawRect(px(-45f), py(-30f), px(45f), py(-18f), k.fill)
-
-        k.fill.color = l.shade(0xFFE67E22.toInt())
-        c.drawRect(px(-35f), py(-28f), px(-10f), py(-18f), k.fill)
-        c.drawRect(px(5f), py(-28f), px(35f), py(-18f), k.fill)
-
-        // Driver figure
-        k.fill.color = l.shade(0xFFEE5253.toInt())
-        c.drawCircle(px(20f), py(-38f), 6f * s, k.fill)
-        k.fill.color = l.shade(0xFFF5CBA7.toInt())
-        c.drawCircle(px(22f), py(-36f), 4.5f * s, k.fill)
-        k.fill.color = l.shade(0xFF2980B9.toInt())
-        c.drawRect(px(14f), py(-31f), px(28f), py(-18f), k.fill)
-        k.line.strokeWidth = 2.2f * s; k.line.color = l.shade(0xFFF5CBA7.toInt())
-        c.drawLine(px(24f), py(-27f), px(32f), py(-24f), k.line)
-
-        // Windshield
-        val glass = Path()
-        glass.moveTo(px(-15f), py(-18f))
-        glass.lineTo(px(5f), py(-36f))
-        glass.lineTo(px(42f), py(-36f))
-        glass.lineTo(px(52f), py(-18f))
-        glass.close()
-        k.fill.color = k.alpha(l.shade(0xFF3498DB.toInt()), 160)
-        c.drawPath(glass, k.fill)
-        k.line.strokeWidth = 1.8f * s; k.line.color = darkTrim
-        c.drawLine(px(-15f), py(-18f), px(5f), py(-36f), k.line)
-        c.drawLine(px(5f), py(-36f), px(42f), py(-36f), k.line)
-        c.drawLine(px(42f), py(-36f), px(52f), py(-18f), k.line)
-
-        // Outboard Motor
-        k.fill.color = darkTrim
-        c.drawRect(px(-108f), py(-16f), px(-93f), py(6f), k.fill)
-        k.fill.color = l.shade(0xFFBDC3C7.toInt())
-        c.drawRect(px(-106f), py(-12f), px(-95f), py(-8f), k.fill)
-
-        if (l.windowsLit) {
-            k.fill.color = 0xFFFFEAA7.toInt()
-            c.drawCircle(px(112f), py(-3f), 4f * s, k.fill)
-        }
-
+    /** Chairs, umbrella, sandcastle, towel, people and surfboard, in a layer of their own above the swash. */
+    private fun props(k: PaintKit): Bitmap? {
+        val (c, bmp) = k.newLayer(layers[2]) ?: return null
+        k.beachProps(c)
         return bmp
-    }
-
-    private fun drawRelaxChair(
-        c: Canvas, k: PaintKit, x: Float, y: Float, cw: Float, ch: Float,
-        frameCol: Int, fabricCol: Int, personSwimsuit: Int,
-        hasPersonSunbathing: Boolean = false, hasPersonSitting: Boolean = false
-    ) {
-        val l = k.l
-        val unit = k.unit
-
-        k.fill.color = k.alpha(Color.BLACK, 40)
-        c.drawOval(x - cw * 0.6f, y + ch * 0.4f, x + cw * 0.6f, y + ch * 0.9f, k.fill)
-
-        k.line.strokeWidth = 2.2f * unit; k.line.color = frameCol
-        c.drawLine(x - cw * 0.45f, y + ch * 0.6f, x - cw * 0.35f, y + ch * 0.1f, k.line)
-        c.drawLine(x + cw * 0.35f, y + ch * 0.6f, x + cw * 0.25f, y + ch * 0.1f, k.line)
-
-        val seat = Path()
-        seat.moveTo(x - cw * 0.5f, y - ch * 0.5f)
-        seat.lineTo(x - cw * 0.2f, y + ch * 0.1f)
-        seat.lineTo(x + cw * 0.45f, y + ch * 0.1f)
-        seat.lineTo(x + cw * 0.45f, y + ch * 0.3f)
-        seat.lineTo(x - cw * 0.15f, y + ch * 0.3f)
-        seat.lineTo(x - cw * 0.42f, y - ch * 0.35f)
-        seat.close()
-
-        k.fill.color = fabricCol
-        c.drawPath(seat, k.fill)
-
-        k.line.strokeWidth = 1.8f * unit; k.line.color = l.shade(0xFFFFFFFF.toInt())
-        c.drawLine(x - cw * 0.45f, y - ch * 0.4f, x + cw * 0.4f, y + ch * 0.2f, k.line)
-
-        k.fill.color = k.lighten(fabricCol, 0.2f)
-        c.drawRoundRect(x - cw * 0.52f, y - ch * 0.65f, x - cw * 0.38f, y - ch * 0.35f, 3f * unit, 3f * unit, k.fill)
-
-        if (hasPersonSunbathing) {
-            val skin = l.shade(0xFFF5CBA7.toInt())
-            k.fill.color = skin
-            c.drawCircle(x - cw * 0.44f, y - ch * 0.5f, cw * 0.12f, k.fill)
-            k.fill.color = l.shade(0xFF2C3E50.toInt())
-            c.drawRect(x - cw * 0.48f, y - ch * 0.54f, x - cw * 0.42f, y - ch * 0.46f, k.fill)
-            k.fill.color = personSwimsuit
-            c.drawRect(x - cw * 0.32f, y - ch * 0.3f, x + cw * 0.1f, y + ch * 0.05f, k.fill)
-            k.line.strokeWidth = 3f * unit; k.line.color = skin
-            c.drawLine(x + cw * 0.1f, y + ch * 0.02f, x + cw * 0.4f, y + ch * 0.02f, k.line)
-            c.drawLine(x - cw * 0.25f, y - ch * 0.1f, x - cw * 0.05f, y + ch * 0.15f, k.line)
-        }
-
-        if (hasPersonSitting) {
-            val skin = l.shade(0xFFF5CBA7.toInt())
-            k.fill.color = l.shade(0xFFFCA311.toInt())
-            c.drawRect(x - cw * 0.3f, y - ch * 0.8f, x - cw * 0.1f, y - ch * 0.1f, k.fill)
-            k.fill.color = personSwimsuit
-            c.drawRect(x - cw * 0.3f, y - ch * 0.1f, x + cw * 0.15f, y + ch * 0.15f, k.fill)
-            k.line.strokeWidth = 3.2f * unit; k.line.color = skin
-            c.drawLine(x + cw * 0.15f, y + ch * 0.1f, x + cw * 0.38f, y + ch * 0.1f, k.line)
-            k.fill.color = skin
-            c.drawCircle(x - cw * 0.2f, y - ch * 1.0f, cw * 0.13f, k.fill)
-            k.fill.color = l.shade(0xFFE9C46A.toInt())
-            c.drawOval(x - cw * 0.42f, y - ch * 1.25f, x + cw * 0.02f, y - ch * 1.05f, k.fill)
-            c.drawArc(x - cw * 0.3f, y - ch * 1.45f, x - cw * 0.1f, y - ch * 1.05f, 180f, 180f, true, k.fill)
-            k.line.strokeWidth = 2.5f * unit
-            c.drawLine(x - cw * 0.15f, y - ch * 0.5f, x - cw * 0.02f, y - ch * 0.3f, k.line)
-            k.fill.color = l.shade(0xFF4E342E.toInt())
-            c.drawCircle(x - cw * 0.02f, y - ch * 0.3f, cw * 0.08f, k.fill)
-        }
-    }
-
-    private fun drawBeachUmbrella(c: Canvas, k: PaintKit, ux: Float, uy: Float) {
-        val l = k.l
-        val u = k.unit
-        val rad = 75f * u
-        val domeH = 36f * u
-        val dipH = 8f * u
-        val poleH = 110f * u
-
-        k.fill.color = k.alpha(Color.BLACK, 45)
-        c.drawOval(ux - rad * 1.05f, uy + poleH - 4f * u, ux + rad * 1.05f, uy + poleH + 10f * u, k.fill)
-
-        k.line.strokeWidth = 3f * u
-        k.line.color = l.shade(0xFF5D4037.toInt())
-        c.drawLine(ux, uy - domeH * 0.2f, ux, uy + poleH, k.line)
-
-        val canopy = Path()
-        canopy.moveTo(ux - rad, uy)
-        canopy.quadTo(ux, uy - domeH * 1.3f, ux + rad, uy)
-        canopy.quadTo(ux, uy + dipH, ux - rad, uy)
-        canopy.close()
-
-        val colors = intArrayOf(
-            l.shade(0xFFEE5253.toInt()),
-            l.shade(0xFFFF9F43.toInt()),
-            l.shade(0xFF00D2D3.toInt()),
-            l.shade(0xFFFFFFFF.toInt()),
-            l.shade(0xFF54A0FF.toInt()),
-            l.shade(0xFFFECA57.toInt())
-        )
-
-        c.save()
-        c.clipPath(canopy)
-        val numPanels = 6
-        val panelW = (rad * 2f) / numPanels
-        for (i in 0 until numPanels) {
-            val px0 = ux - rad + i * panelW
-            val px1 = px0 + panelW
-            k.fill.color = colors[i % colors.size]
-
-            val panelPath = Path()
-            panelPath.moveTo(ux, uy - domeH * 0.85f)
-            panelPath.lineTo(px0, uy + dipH * 2f)
-            panelPath.lineTo(px1, uy + dipH * 2f)
-            panelPath.close()
-
-            c.drawPath(panelPath, k.fill)
-        }
-        c.restore()
-
-        k.line.strokeWidth = 1.2f * u
-        k.line.color = k.alpha(l.shade(0xFF222222.toInt()), 100)
-        for (i in 1 until numPanels) {
-            val px = ux - rad + i * panelW
-            c.drawLine(ux, uy - domeH * 0.85f, px, uy + dipH * 0.5f, k.line)
-        }
-
-        k.line.strokeWidth = 1.8f * u
-        k.line.color = l.shade(0xFF333333.toInt())
-        c.drawPath(canopy, k.line)
-
-        k.fill.color = l.shade(0xFF2C3E50.toInt())
-        c.drawCircle(ux, uy - domeH * 0.85f, 4.5f * u, k.fill)
-    }
-
-    private fun drawWalkingPerson(c: Canvas, k: PaintKit, x: Float, y: Float) {
-        val l = k.l
-        val s = k.unit
-        val skin = l.shade(0xFFF5CBA7.toInt())
-
-        k.fill.color = k.alpha(Color.BLACK, 35)
-        c.drawOval(x - 8f * s, y - 2f * s, x + 8f * s, y + 4f * s, k.fill)
-
-        k.line.strokeWidth = 3.2f * s; k.line.color = skin
-        c.drawLine(x - 2f * s, y - 12f * s, x - 6f * s, y, k.line)
-        c.drawLine(x + 2f * s, y - 12f * s, x + 6f * s, y, k.line)
-
-        k.fill.color = l.shade(0xFF00D2D3.toInt())
-        c.drawRect(x - 5f * s, y - 20f * s, x + 5f * s, y - 10f * s, k.fill)
-
-        k.fill.color = skin
-        c.drawRect(x - 4f * s, y - 32f * s, x + 4f * s, y - 20f * s, k.fill)
-
-        c.drawLine(x - 4f * s, y - 28f * s, x - 10f * s, y - 40f * s, k.line)
-        c.drawLine(x + 4f * s, y - 28f * s, x + 8f * s, y - 18f * s, k.line)
-
-        c.drawCircle(x, y - 38f * s, 5f * s, k.fill)
-
-        k.fill.color = l.shade(0xFFFECA57.toInt())
-        c.drawOval(x - 9f * s, y - 42f * s, x + 9f * s, y - 39f * s, k.fill)
-    }
-
-    private fun drawSurfboard(c: Canvas, k: PaintKit, x: Float, y: Float) {
-        val l = k.l
-        val s = k.unit
-        c.save()
-        c.rotate(-15f, x, y)
-
-        k.fill.color = k.alpha(Color.BLACK, 40)
-        c.drawOval(x - 4f * s, y - 5f * s, x + 8f * s, y + 4f * s, k.fill)
-
-        val board = Path()
-        board.moveTo(x, y - 45f * s)
-        board.quadTo(x + 10f * s, y - 20f * s, x + 8f * s, y + 10f * s)
-        board.lineTo(x - 8f * s, y + 10f * s)
-        board.quadTo(x - 10f * s, y - 20f * s, x, y - 45f * s)
-        board.close()
-
-        val yellowBase = l.shade(0xFFFECA57.toInt())
-        val redStripe = l.shade(0xFFEE5253.toInt())
-        val tealStripe = l.shade(0xFF00D2D3.toInt())
-
-        k.fill.color = yellowBase
-        c.drawPath(board, k.fill)
-
-        c.save()
-        c.clipPath(board)
-        k.fill.color = redStripe
-        c.drawRect(x - 2f * s, y - 45f * s, x + 2f * s, y + 10f * s, k.fill)
-        k.fill.color = tealStripe
-        c.drawRect(x - 6f * s, y - 25f * s, x + 6f * s, y - 20f * s, k.fill)
-        c.restore()
-
-        k.line.strokeWidth = 1.5f * s; k.line.color = l.shade(0xFF333333.toInt())
-        c.drawPath(board, k.line)
-
-        c.restore()
     }
 
     private fun palm(k: PaintKit): Bitmap? = paintPalm(k, 63)
 
-    private companion object {
-        const val FOAM_SEGMENTS = 24
+    /**
+     * One boat crossing the sea, left to right. Slow boats stay on screen; fast ones cross and then spend
+     * a while out of sight before coming round again. Planing boats ride bow-up and slap over the chop.
+     */
+    private fun drawBoat(canvas: Canvas, st: BoatStyle, boat: Bitmap, w: Float, h: Float) {
+        val t = timeMs / 1000f
+        val r = roughness(windKmh)
+        val unit = w / 1080f
+        val bw = boat.width.toFloat()
+        val wl = boat.height * st.waterline
+        val ph = st.start * 5f
+        // From just off the left edge to far enough right that the wake has gone too, then round again.
+        val lead = bw * 0.6f
+        val trail = bw * (0.5f + st.wakeLen * 0.85f)
+        val x = ((t * st.speed + st.start) * w) % max(st.span * w, w + lead + trail) - lead
+        val bounce = (sin(t * 2.6f + ph) * 0.6f + sin(t * 4.1f + 1f + ph) * 0.4f) * h * 0.0016f * r * st.bob
+        val y = h * st.y + bounce + sin(t * 0.7f + ph) * h * st.weave
+        val pitch = st.pitch + (sin(t * 1.9f + ph) * 1.1f + sin(t * 3.3f + ph) * 0.6f) * r * st.bob.coerceAtMost(1.2f)
+        val wake = wakes.getValue(st)
+
+        canvas.save()
+        canvas.translate(x + shift(0.5f), y)
+        wake.drawTrail(canvas, boat, t, r, unit)
+        // The hull is cut off at the waterline: what is below it is under the water.
+        canvas.save()
+        canvas.clipRect(-bw, -bw, bw, 0f)
+        canvas.rotate(-pitch)
+        canvas.drawBitmap(boat, -bw * 0.5f, -wl, spritePaint)
+        canvas.restore()
+        wake.drawFront(canvas, bw, t, r, unit)
+
+        // The bow lamp: full strength at night, faint against the dusk sky, none in daylight.
+        val lamp = if (!lighting.windowsLit) 0f else when (lighting.timeOfDay) {
+            com.skymood.domain.TimeOfDay.NIGHT -> 1f
+            com.skymood.domain.TimeOfDay.DUSK -> 0.5f
+            else -> 0.6f
+        }
+        wake.drawLight(canvas, bw, pitch, lamp, t, unit)
+        canvas.restore()
     }
 
     override fun drawAnimated(canvas: Canvas, stage: Int) {
         val w = width.toFloat(); val h = height.toFloat()
         if (stage == 1) {
             water.draw(canvas, timeMs, windKmh, shift(0.4f))
+            surf.drawSwells(canvas, timeMs, windKmh, shift(0.5f))
+            surf.drawGlitter(canvas, timeMs, shift(0.4f))
 
-            val boat = sprites["boat"]
-            if (boat != null) {
-                val t = timeMs / 1000f
-                val r = roughness(windKmh)
-                val boatCycle = (t * 0.045f) % 1.4f - 0.2f
-                val boatX = w * boatCycle
-                val boatY = h * 0.725f + sin(t * 2.2f) * h * 0.0035f * r
-                val pitch = sin(t * 1.8f) * 2.2f * r
-
+            // A sailing boat far out, crossing the horizon very slowly.
+            val sail = sprites["sail"]
+            if (sail != null) {
+                val st = timeMs / 1000f
+                val sxp = w * (((st * 0.0035f + 0.55f) % 1.3f) - 0.15f)
+                val syp = h * 0.676f + sin(st * 1.1f) * h * 0.0012f
                 canvas.save()
-                canvas.translate(boatX + shift(0.5f), boatY)
-                canvas.rotate(pitch)
-
-                val bw = boat.width.toFloat()
-                val bh = boat.height.toFloat()
-
-                // Trailing wake foam
-                val wakePaint = foamPaint
-                wakePaint.alpha = (180 * (0.7f + 0.3f * r)).toInt().coerceIn(0, 255)
-                canvas.drawLine(-bw * 0.45f, bh * 0.1f, -bw * 1.4f, bh * 0.35f + sin(t * 4f) * bh * 0.1f, wakePaint)
-                canvas.drawLine(-bw * 0.45f, bh * 0.25f, -bw * 1.6f, bh * 0.65f - sin(t * 4f) * bh * 0.1f, wakePaint)
-
-                // Bow spray
-                foamDots(canvas, wakePaint, bw * 0.4f, bw * 0.55f, bh * 0.15f, 4, t, w * 0.003f, r)
-
-                canvas.drawBitmap(boat, -bw * 0.5f, -bh * 0.65f, spritePaint)
-
-                if (lighting.windowsLit) {
-                    val beam = Path()
-                    beam.moveTo(bw * 0.45f, -bh * 0.1f)
-                    beam.lineTo(bw * 2.2f, -bh * 0.4f)
-                    beam.lineTo(bw * 2.2f, bh * 0.5f)
-                    beam.close()
-                    val beamPaint = fillPaint()
-                    beamPaint.color = 0x33FFF6DC
-                    canvas.drawPath(beam, beamPaint)
-                }
-
+                canvas.translate(sxp + shift(0.45f), syp)
+                canvas.rotate(3.5f + sin(st * 0.8f) * 1.2f)
+                canvas.drawBitmap(sail, -sail.width * 0.5f, -sail.height * 0.9f, spritePaint)
                 canvas.restore()
             }
+
+            // Far rows first, so a boat passing in front of another hides it.
+            for (st in BoatStyle.FLEET) drawBoat(canvas, st, sprites[st.key] ?: continue, w, h)
+            // Over the boat and its wake: the sea clearing to turquoise as it shoals onto the sand.
+            surf.drawShallows(canvas, shift(1f))
+            return
+        }
+        if (stage == 2) {
+            // Before the props layer: the swash covers the sand, and the props stand on top of it.
+            surf.drawRunup(canvas, timeMs, windKmh, shift(1f))
             return
         }
         if (stage != layers.size) return
         val t = timeMs / 1000f
-        val reach = sin(t * 0.7f) * h * 0.008f
-        var fn = 0
-        var fpx = 0f; var fpy = 0f
-        for (i in 0..FOAM_SEGMENTS) {
-            val x = -w * 0.1f + w * 1.2f * i / FOAM_SEGMENTS
-            val y = shoreEdge(x, w, h) - h * 0.004f + reach + sin(x * 0.02f + t * 2f) * h * 0.002f
-            if (i > 0) { foamLines[fn++] = fpx; foamLines[fn++] = fpy; foamLines[fn++] = x; foamLines[fn++] = y }
-            fpx = x; fpy = y
-        }
-        foamPaint.alpha = (170 + 60 * sin(t * 0.7f)).toInt()
-        canvas.save()
-        canvas.translate(shift(0.8f), 0f)
-        canvas.drawLines(foamLines, 0, fn, foamPaint)
-        canvas.restore()
         val palm = sprites["palm"] ?: return
         canvas.save()
         canvas.translate(w * 0.78f + shift(1f), h * 0.89f)
@@ -1689,13 +1419,16 @@ class WaterfallLandscape : PaintedLandscape() {
 }
 
 /** A small tropical palm for distant headlands and ridges. */
-private fun drawMiniPalm(c: Canvas, k: PaintKit, x: Float, y: Float, th: Float, lit: Int, dark: Int, rnd: Random) {
+private fun drawMiniPalm(
+    c: Canvas, k: PaintKit, x: Float, y: Float, th: Float, lit: Int, dark: Int, rnd: Random,
+    trunk: Int = k.l.shade(0xFF5A4632.toInt()),
+) {
     val l = k.l
     val lean = (rnd.nextFloat() - 0.5f) * th * 0.4f
     val cx = x + lean
     val cy = y - th
     k.line.strokeWidth = (th * 0.12f).coerceAtLeast(1.2f * k.unit)
-    k.line.color = l.shade(0xFF5A4632.toInt())
+    k.line.color = trunk
     c.drawLine(x, y + 1f, cx, cy, k.line)
     val fronds = 8
     val len = th * 0.65f

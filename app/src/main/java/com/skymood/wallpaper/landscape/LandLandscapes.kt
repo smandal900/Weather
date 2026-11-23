@@ -324,7 +324,9 @@ class HillLandscape : PaintedLandscape() {
         }
         return meadowSpec!!
     }
-    override val layers = arrayOf(PaintLayer(0.5f, 0.86f, 0.1f), PaintLayer(0.6f, 1f, 0.5f), PaintLayer(0.32f, 1f, 1f))
+    override val layers = arrayOf(
+        PaintLayer(0.46f, 0.8f, 0.03f), PaintLayer(0.5f, 0.88f, 0.1f), PaintLayer(0.58f, 1f, 0.5f), PaintLayer(0.32f, 1f, 1f),
+    )
 
     private var slots: List<GroundSlot> = emptyList()
     private var slotsFor = 0
@@ -347,45 +349,100 @@ class HillLandscape : PaintedLandscape() {
         )
     }
 
-    override fun paintAll(k: PaintKit) = PaintResult(arrayOf(far(k), mid(k), near(k)))
+    override fun paintAll(k: PaintKit) = PaintResult(arrayOf(farthest(k), far(k), mid(k), near(k)))
 
-    private fun far(k: PaintKit): Bitmap? {
+    /** The faintest ridge, almost lost in the haze: just soft form and a cool tone. */
+    private fun farthest(k: PaintKit): Bitmap? {
         val (c, bmp) = k.newLayer(layers[0]) ?: return null
         val l = k.l; val h = k.h
-        val rnd = Random(21)
-        val ridge = Ridge(k.width, h * 0.7f, h * 0.07f, false, 8)
-        k.hill(c, ridge, h * 0.86f, l.distant(l.ground(0xFF8DB46E.toInt()), 0.4f), l.distant(l.ground(0xFF5E8F50.toInt()), 0.4f), rnd, 300)
-        k.fields(c, ridge, h * 0.86f, rnd, 8)
-        k.haze(c, h * 0.62f, h * 0.86f, 0.4f)
+        val ridge = Ridge(k.width, h * 0.665f, h * 0.075f, false, 5, rolling = true)
+        val top = l.distant(l.ground(0xFF86A3B4.toInt()), 0.5f)
+        val base = l.distant(l.ground(0xFF6C9096.toInt()), 0.5f)
+        val rnd = Random(20)
+        k.hill(c, ridge, h * 0.8f, top, base, rnd, 0)
+        k.contourGrass(c, ridge, h * 0.8f, h * 0.1f, top, base, rnd, 10)
+        k.woodland(c, ridge, h * 0.8f, h * 0.1f, rnd, 40, l.distant(l.foliage(0xFF2F6046.toInt()), 0.34f), l.distant(l.foliage(0xFF5C9460.toInt()), 0.34f), 6f * k.unit)
+        k.terrainShade(c, ridge, h * 0.8f, h * 0.09f, top, base)
+        k.valleyMist(c, ridge, h * 0.05f, 0.4f)
+        k.haze(c, h * 0.6f, h * 0.8f, 0.3f)
         return bmp
     }
 
-    private fun mid(k: PaintKit): Bitmap? {
+    /** Distant farmland: small patchwork fields and hedges, contour grain, mist in the valleys. */
+    private fun far(k: PaintKit): Bitmap? {
         val (c, bmp) = k.newLayer(layers[1]) ?: return null
         val l = k.l; val h = k.h
+        val rnd = Random(21)
+        val bottom = h * 0.88f
+        val ridge = Ridge(k.width, h * 0.745f, h * 0.085f, false, 8, rolling = true)
+        val top = l.distant(l.ground(0xFF8DB46E.toInt()), 0.36f)
+        val base = l.distant(l.ground(0xFF5E8F50.toInt()), 0.36f)
+        k.hill(c, ridge, bottom, top, base, rnd, 120)
+        k.contourGrass(c, ridge, bottom, h * 0.13f, top, base, rnd, 14)
+        val palette = intArrayOf(0xFFB7C45A.toInt(), 0xFF6F9A3E.toInt(), 0xFFD6BE5E.toInt(), 0xFF4F8238.toInt(), 0xFF9DB24A.toInt(), 0xFF9A7B52.toInt())
+            .map { l.distant(l.ground(it), 0.36f) }.toIntArray()
+        k.patchwork(
+            c, ridge, bottom, h * 0.13f, rnd, palette,
+            l.distant(l.foliage(0xFF2F5E2E.toInt()), 0.36f), l.distant(l.foliage(0xFF5E9444.toInt()), 0.36f), 0.07f, 125,
+        )
+        k.woodland(c, ridge, bottom, h * 0.13f, rnd, 34, l.distant(l.foliage(0xFF2F5E36.toInt()), 0.36f), l.distant(l.foliage(0xFF5F9448.toInt()), 0.36f), 9f * k.unit)
+        k.terrainShade(c, ridge, bottom, h * 0.06f, top, base)
+        k.valleyMist(c, ridge, h * 0.07f, 0.5f)
+        k.haze(c, h * 0.62f, h * 0.88f, 0.34f)
+        return bmp
+    }
+
+    /** The middle hill: larger fields bounded by hedgerows and trees, a lane winding to the crest. */
+    private fun mid(k: PaintKit): Bitmap? {
+        val (c, bmp) = k.newLayer(layers[2]) ?: return null
+        val l = k.l; val h = k.h; val w = k.w
         val rnd = Random(22)
-        val ridge = Ridge(k.width, h * 0.78f, h * 0.06f, false, 9)
-        k.hill(c, ridge, h, l.distant(l.ground(0xFF66A055.toInt()), 0.14f), l.ground(0xFF3B7035.toInt()), rnd, 500)
-        k.fields(c, ridge, h, rnd, 6)
+        val ridge = Ridge(k.width, h * 0.795f, h * 0.065f, false, 9, rolling = true)
+        val top = l.distant(l.ground(0xFF66A055.toInt()), 0.14f)
+        val base = l.ground(0xFF3B7035.toInt())
+        k.hill(c, ridge, h, top, base, rnd, 160)
+        k.contourGrass(c, ridge, h, h * 0.2f, top, base, rnd, 24)
+        val palette = intArrayOf(0xFF86B04A.toInt(), 0xFF5E9A3A.toInt(), 0xFFCDB45A.toInt(), 0xFF3F7A32.toInt(), 0xFF9CB84A.toInt(), 0xFF8A6A48.toInt())
+            .map { l.distant(l.ground(it), 0.14f) }.toIntArray()
+        val hedge = l.distant(l.foliage(0xFF24502A.toInt()), 0.14f)
+        val hedgeLit = l.distant(l.foliage(0xFF5C9A44.toInt()), 0.14f)
+        val corners = k.patchwork(c, ridge, h, h * 0.2f, rnd, palette, hedge, hedgeLit, 0.12f, 120)
+        k.hillLane(c, ridge, h, w * 0.62f, h * 0.9f, w * 0.38f, l.distant(l.ground(0xFFC9B386.toInt()), 0.14f))
+        k.terrainShade(c, ridge, h, h * 0.09f, top, base)
+
         val lit = l.distant(l.foliage(0xFF6FB85A.toInt()), 0.12f); val dark = l.distant(l.foliage(0xFF2A5A2A.toInt()), 0.12f)
+        val trunk = l.shade(0xFF4A3A2A.toInt())
+        // Trees stand on the hedgerows, nearer ones larger; a few copses crown the crest.
+        for (corner in corners.sortedBy { it[1] }) {
+            if (rnd.nextFloat() > 0.42f) continue
+            val x = corner[0]; val t = corner[2]
+            val th = h * (0.028f + 0.05f * t) * (0.8f + 0.5f * rnd.nextFloat())
+            k.groundShadow(c, x, corner[1] + th * 0.02f, th)
+            k.broadleaf(c, x, corner[1] + th * 0.02f, th, k.jitter(lit, rnd, 0.18f), dark, trunk, rnd, 0.3f)
+        }
         var x = -k.margin
         while (x < k.w + k.margin) {
-            if (rnd.nextFloat() < 0.5f) {
-                val th = h * (0.04f + rnd.nextFloat() * 0.04f)
-                k.broadleaf(c, x, ridge.yAt(x) + th * 0.1f, th, k.jitter(lit, rnd, 0.18f), dark, l.shade(0xFF4A3A2A.toInt()), rnd, 0.35f)
+            if (rnd.nextFloat() < 0.3f) {
+                for (i in 0 until 2 + rnd.nextInt(3)) {
+                    val tx = x + (rnd.nextFloat() - 0.5f) * 70f * k.unit
+                    val th = h * (0.035f + rnd.nextFloat() * 0.035f)
+                    k.broadleaf(c, tx, ridge.yAt(tx) + th * 0.12f, th, k.jitter(lit, rnd, 0.18f), dark, trunk, rnd, 0.3f)
+                }
             }
-            x += (38f + rnd.nextFloat() * 36f) * k.unit
+            x += (90f + rnd.nextFloat() * 90f) * k.unit
         }
         k.haze(c, h * 0.8f, h * 0.95f, 0.15f)
         return bmp
     }
 
     private fun near(k: PaintKit): Bitmap? {
-        val (c, bmp) = k.newLayer(layers[2]) ?: return null
+        val (c, bmp) = k.newLayer(layers[3]) ?: return null
         val l = k.l; val h = k.h; val w = k.w
         val rnd = Random(23)
         val ridge = Ridge(k.width, h * 0.9f, h * 0.045f, false, 10)
-        k.hill(c, ridge, h, l.ground(0xFF4F9040.toInt()), l.ground(0xFF285522.toInt()), rnd, 100)
+        val nearTop = l.ground(0xFF4F9040.toInt()); val nearBase = l.ground(0xFF285522.toInt())
+        k.hill(c, ridge, h, nearTop, nearBase, rnd, 100)
+        k.terrainShade(c, ridge, h, h * 0.05f, nearTop, nearBase)
         val lit = l.foliage(0xFF74C25E.toInt()); val dark = l.foliage(0xFF24502A.toInt())
         for (s in floatArrayOf(0.1f, 0.88f)) {
             val x = w * s

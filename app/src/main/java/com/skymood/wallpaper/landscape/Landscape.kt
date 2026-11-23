@@ -248,6 +248,8 @@ abstract class Landscape {
             LandscapeType.RAILWAY_HILLS -> RailwayHillsLandscape()
             LandscapeType.TRAIN_VIADUCT -> TrainViaductLandscape()
             LandscapeType.COUNTRY_CYCLE -> CountryCycleLandscape()
+            LandscapeType.ALPINE_MEADOW -> AlpineMeadowLandscape()
+            LandscapeType.FOREST_CABIN -> ForestCabinLandscape()
         }
     }
 }
@@ -262,6 +264,8 @@ class Ridge(
     private val amplitude: Float,
     private val jagged: Boolean,
     seed: Int,
+    /** Smooth ridges only: layered sines with rounded crests and broad valleys, instead of two plain waves. */
+    rolling: Boolean = false,
 ) {
     val left = -width * 0.1f
     private val span = width * 1.2f
@@ -291,6 +295,23 @@ class Ridge(
             var lo = Float.MAX_VALUE; var hi = -Float.MAX_VALUE
             for (v in ys) { lo = minOf(lo, v); hi = maxOf(hi, v) }
             for (i in ys.indices) ys[i] = baseY - amplitude * ((ys[i] - lo) / (hi - lo + 1e-6f))
+        } else if (rolling) {
+            val phase = FloatArray(4) { rnd.nextFloat() * 6.28f }
+            val freq = floatArrayOf(1.1f + rnd.nextFloat() * 0.8f, 2.3f + rnd.nextFloat(), 4.7f + rnd.nextFloat() * 1.5f, 9f + rnd.nextFloat() * 3f)
+            val amp = floatArrayOf(0.55f, 0.28f, 0.12f, 0.05f)
+            var lo = Float.MAX_VALUE; var hi = -Float.MAX_VALUE
+            for (i in ys.indices) {
+                val u = i / (samples - 1f)
+                var v = 0f
+                for (o in 0 until 4) v += amp[o] * sin(u * freq[o] * 3.14f + phase[o])
+                ys[i] = v
+                lo = minOf(lo, v); hi = maxOf(hi, v)
+            }
+            for (i in ys.indices) {
+                val v = (ys[i] - lo) / (hi - lo + 1e-6f)
+                // Blend towards smoothstep: rounder crests, flatter valley floors.
+                ys[i] = baseY - amplitude * (v * 0.75f + v * v * (3f - 2f * v) * 0.25f)
+            }
         } else {
             val p1 = rnd.nextFloat() * 6.28f
             val p2 = rnd.nextFloat() * 6.28f
